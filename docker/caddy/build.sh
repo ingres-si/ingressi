@@ -33,6 +33,7 @@ github.com/caddy-dns/njalla
 github.com/caddy-dns/netcup
 github.com/caddy-dns/spaceship
 github.com/caddy-dns/desec
+github.com/caddy-dns/bunny
 github.com/caddy-dns/dynu
 github.com/caddy-dns/acmedns
 github.com/caddy-dns/infomaniak

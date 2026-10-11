@@ -60,7 +60,7 @@ Roles limited to tags see only the **Certificates** tab: certificate authorities
 
 Caddy automatically obtains Let's Encrypt certificates for all proxy hosts.
 
-**DNS-01 Challenge** (optional): Configure a DNS provider in **Certificates → Certificate settings** (DNS-01 providers) for wildcard certificates and environments where ports 80/443 are not public. Supported providers: Cloudflare, Route 53, DigitalOcean, Duck DNS, Hetzner, Vultr, Porkbun, GoDaddy, Namecheap, OVH, IONOS, Linode, Njalla, netcup, Spaceship, deSEC, Dynu, acme-dns, Infomaniak, INWX, ClouDNS, and RFC2136 (BIND/TSIG). Credentials are encrypted at rest with AES-256-GCM. You can override the DNS provider per certificate. The DNS propagation delay and timeout can be set per provider (netcup ships with slow-propagation defaults).
+**DNS-01 Challenge** (optional): Configure a DNS provider in **Certificates → Certificate settings** (DNS-01 providers) for wildcard certificates and environments where ports 80/443 are not public. Supported providers: Cloudflare, Route 53, DigitalOcean, Duck DNS, Hetzner, Vultr, Porkbun, GoDaddy, Namecheap, OVH, IONOS, Linode, Njalla, netcup, Spaceship, deSEC, Bunny, Dynu, acme-dns, Infomaniak, INWX, ClouDNS, and RFC2136 (BIND/TSIG). Credentials are encrypted at rest with AES-256-GCM. You can override the DNS provider per certificate. The DNS propagation delay and timeout can be set per provider (netcup ships with slow-propagation defaults).
 
 **Custom Certificates** (optional): Import your own certificates via the Certificates page. Private keys are encrypted at rest with AES-256-GCM, migrated from legacy plaintext storage on startup, and treated as write-only by ordinary API responses and browser payloads.
 

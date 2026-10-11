@@ -15,6 +15,7 @@ package tools
 
 import (
 	_ "github.com/caddy-dns/acmedns"
+	_ "github.com/caddy-dns/bunny"
 	_ "github.com/caddy-dns/cloudflare"
 	_ "github.com/caddy-dns/cloudns"
 	_ "github.com/caddy-dns/desec"

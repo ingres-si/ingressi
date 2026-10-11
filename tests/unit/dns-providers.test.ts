@@ -274,6 +274,33 @@ describe("DNS provider registry", () => {
     expect(DNS_PROVIDERS.map((p) => p.name)).toContain("inwx");
   });
 
+  it("registers Bunny with the Caddy module path and API access key field", () => {
+    const provider = getProviderDefinition("bunny");
+
+    expect(provider).toMatchObject({
+      name: "bunny",
+      displayName: "Bunny",
+      docsUrl: "https://github.com/caddy-dns/bunny",
+      modulePath: "github.com/caddy-dns/bunny",
+    });
+    expect(provider?.fields).toEqual([
+      { key: "access_key", label: "API Access Key", type: "password", required: true },
+      ...challengeOptionFields(),
+    ]);
+    expect(DNS_PROVIDERS.map((p) => p.name)).toContain("bunny");
+  });
+
+  it("encrypts, decrypts, and emits Bunny credentials for Caddy DNS challenges", () => {
+    const encrypted = encryptProviderCredentials("bunny", { access_key: "bunny-key" });
+
+    expect(isEncryptedSecret(encrypted.access_key)).toBe(true);
+    expect(decryptProviderCredentials("bunny", encrypted)).toEqual({ access_key: "bunny-key" });
+    expect(buildDnsChallengeConfig("bunny", encrypted, ["1.1.1.1"])).toEqual({
+      provider: { name: "bunny", access_key: "bunny-key" },
+      resolvers: ["1.1.1.1"],
+    });
+  });
+
   it("registers Infomaniak with the Caddy module path and API token field", () => {
     const provider = getProviderDefinition("infomaniak");
 

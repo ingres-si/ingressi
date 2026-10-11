@@ -101,6 +101,8 @@ github.com/bsm/redislock v0.9.4 h1:X/Wse1DPpiQgHbVYRE9zv6m070UcKoOGekgvpNhiSvw=
 github.com/bsm/redislock v0.9.4/go.mod h1:Epf7AJLiSFwLCiZcfi6pWFO/8eAYrYpQXFxEDPoDeAk=
 github.com/caddy-dns/acmedns v0.7.0 h1:zlsnz+IXdek9ACGpCPkGK4QIGGQOnudnqBNFjwPi2YM=
 github.com/caddy-dns/acmedns v0.7.0/go.mod h1:ggGhjWHIZNoqXZymONNf4YRIZLu0OYMz88ZWkzaLO2s=
+github.com/caddy-dns/bunny v1.2.0 h1:xnfRrqIeLYtQmOtitY+EtopIHCnVr+xqFxc7w28PLkM=
+github.com/caddy-dns/bunny v1.2.0/go.mod h1:yOQ1941/USWHaf5UZf8ig5V0EiGM+RiIQA29QVAFGRQ=
 github.com/caddy-dns/cloudflare v0.2.4 h1:h51SY6+JeevBcPtQ6xZxGRakYzbGiOXeJCFowQj/bGg=
 github.com/caddy-dns/cloudflare v0.2.4/go.mod h1:Rge8GoKEa65RIUd1GQ9DmOmnjD9FMztz5yiaKvf351E=
 github.com/caddy-dns/cloudns v1.2.0 h1:7D2DZugMV679jh3781gaIae68cAT94bf9St1ggeGGX0=
@@ -347,6 +349,8 @@ github.com/letsencrypt/pebble/v2 v2.10.1 h1:oKHx3lgN4e5Nno2LKTMrVx+b+NkDptkO9aDi
 github.com/letsencrypt/pebble/v2 v2.10.1/go.mod h1:KtYhQ4YTjT5MtoCZ6RTCXlbrrz6cKyXROCuTpIUDJFY=
 github.com/libdns/acmedns v0.5.0 h1:5pRtmUj4Lb/QkNJSl1xgOGBUJTWW7RjpNaIhjpDXjPE=
 github.com/libdns/acmedns v0.5.0/go.mod h1:X7UAFP1Ep9NpTwWpVlrZzJLR7epynAy0wrIxSPFgKjQ=
+github.com/libdns/bunny v1.4.0 h1:wI+1WpSMLafk5ddjylDx1EH+aCJ1KyFB+UI88miX5+I=
+github.com/libdns/bunny v1.4.0/go.mod h1:v0EWdOJv51vYJaXQD0UNz/FfBrHlFaiPUO16YG318+o=
 github.com/libdns/cloudflare v0.2.2 h1:XWHv+C1dDcApqazlh08Q6pjytYLgR2a+Y3xrXFu0vsI=
 github.com/libdns/cloudflare v0.2.2/go.mod h1:w9uTmRCDlAoafAsTPnn2nJ0XHK/eaUMh86DUk8BWi60=
 github.com/libdns/cloudns v1.2.0 h1:V299bWj6HHTsXSzoEkRsKNBb9V/HGj3zp4OYzJ31JX8=

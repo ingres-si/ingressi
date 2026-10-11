@@ -4,6 +4,7 @@ go 1.26.0
 
 require (
 	github.com/caddy-dns/acmedns v0.7.0
+	github.com/caddy-dns/bunny v1.2.0
 	github.com/caddy-dns/cloudflare v0.2.4
 	github.com/caddy-dns/cloudns v1.2.0
 	github.com/caddy-dns/desec v1.1.0
@@ -129,6 +130,7 @@ require (
 	github.com/klauspost/compress v1.20.1 // indirect
 	github.com/klauspost/cpuid/v2 v2.4.0 // indirect
 	github.com/libdns/acmedns v0.5.0 // indirect
+	github.com/libdns/bunny v1.4.0 // indirect
 	github.com/libdns/cloudflare v0.2.2 // indirect
 	github.com/libdns/cloudns v1.2.0 // indirect
 	github.com/libdns/desec v1.1.0 // indirect

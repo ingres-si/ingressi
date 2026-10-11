@@ -306,6 +306,16 @@ const BASE_DNS_PROVIDERS: DnsProviderDefinition[] = [
     ],
   },
   {
+    name: "bunny",
+    displayName: "Bunny",
+    description: "Bunny DNS API",
+    docsUrl: "https://github.com/caddy-dns/bunny",
+    modulePath: "github.com/caddy-dns/bunny",
+    fields: [
+      { key: "access_key", label: "API Access Key", type: "password", required: true },
+    ],
+  },
+  {
     name: "dynu",
     displayName: "Dynu",
     description: "Dynu DNS API",
