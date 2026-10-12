@@ -84,7 +84,7 @@ export default async function ProxyHostsPage({ searchParams }: PageProps) {
     attention: filtered.filter((row) => matchesStatus(row, "attention")).length,
     disabled: filtered.filter((row) => matchesStatus(row, "disabled")).length,
   };
-  const matching = sortHostRows(filtered.filter((row) => matchesStatus(row, query.status)), query.sortBy, query.sortDir);
+  const matching = sortHostRows(filtered.filter((row) => matchesStatus(row, query.status)), query.sortBy, query.sortDir, query.groupBy, query.tags);
   const { items: pageRows, page, perPage } = paginate<HostListRow>(matching, query.page);
   const byId = new Map(allHosts.map((host) => [host.id, host]));
   const hosts = pageRows.map((row) => byId.get(row.id)!);

@@ -12,6 +12,7 @@ import {
   protectionsOf,
   sortAttention,
   sortHostRows,
+  hostGroupOf,
   statusText,
   type HostAttention,
   type HostCertificate,
@@ -210,6 +211,25 @@ describe('filters and sort', () => {
     expect(matchesTags(row(3, { tags: ['a'] }), ['c'])).toBe(false);
     expect(matchesStatus(row(4, { state: 'disabled' }), 'disabled')).toBe(true);
     expect(matchesStatus(row(4, { state: 'pending' }), 'attention')).toBe(false);
+  });
+
+  it('groups the sorted list by tag, untagged hosts last', () => {
+    const rows = [
+      row(1, { domains: ['a.example.com'], tags: [] }),
+      row(2, { domains: ['b.example.com'], tags: ['media', 'prod'] }),
+      row(3, { domains: ['c.example.com'], tags: ['cloud'] }),
+      row(4, { domains: ['d.example.com'], tags: ['media'] }),
+    ];
+    expect(sortHostRows(rows, 'host', 'asc', 'tag').map((r) => r.id)).toEqual([3, 2, 4, 1]);
+    // The direction orders hosts inside a section; the sections stay alphabetical.
+    expect(sortHostRows(rows, 'host', 'desc', 'tag').map((r) => r.id)).toEqual([3, 4, 2, 1]);
+    expect(sortHostRows(rows, 'host', 'asc', 'none').map((r) => r.id)).toEqual([1, 2, 3, 4]);
+    // With a tag filter a host sits in the section of a tag it was filtered by.
+    expect(hostGroupOf(rows[1], ['prod'])).toBe('prod');
+    expect(hostGroupOf(rows[1])).toBe('media');
+    expect(hostGroupOf(rows[0])).toBeNull();
+    expect(parseHostListQuery({ group: 'tag' }, false).groupBy).toBe('tag');
+    expect(parseHostListQuery({ group: 'nope' }, false).groupBy).toBe('none');
   });
 
   it('sorts by traffic, status and name with a stable tie-break', () => {

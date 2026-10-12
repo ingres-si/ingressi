@@ -89,7 +89,7 @@ const rows: HostListRow[] = [
 
 const hosts = rows.map((row) => ({ id: row.id, name: row.name, domains: row.domains, upstreams: row.upstreams, enabled: row.enabled, tags: row.tags })) as unknown as ProxyHost[];
 
-const query: HostListQuery = { search: '', status: 'all', protection: null, tags: [], sortBy: 'requests', sortDir: 'desc', page: 1 };
+const query: HostListQuery = { search: '', status: 'all', protection: null, tags: [], sortBy: 'requests', sortDir: 'desc', groupBy: 'none', page: 1 };
 
 function renderList(overrides: Record<string, unknown> = {}) {
   return renderToStaticMarkup(
@@ -123,6 +123,14 @@ describe('proxy hosts list', () => {
     for (const column of ['Host', 'Status', 'Requests, 24h', '5xx', 'Protection', 'Certificate', 'Tags']) expect(html).toContain(`>${column}`);
     // Everything fits on one page: no pager.
     expect(html).not.toContain('Pages of hosts');
+  });
+
+  it('offers grouping by tag and renders a heading where the section changes', () => {
+    expect(renderList()).toContain('Group by tag');
+    expect(renderList()).not.toContain('colgroup');
+    const grouped = renderList({ query: { ...query, groupBy: 'tag' } });
+    expect(grouped).toContain('Grouped by tag');
+    expect(grouped).toContain('scope="colgroup"');
   });
 
   it('pages a long list with the shared pager, linking each page by ?page=', () => {

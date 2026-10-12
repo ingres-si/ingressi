@@ -353,6 +353,10 @@ export const SORT_LABELS: Record<SortKey, string> = {
   created: "date added",
 };
 
+/** How the list is laid out: one run of hosts, or a section per tag. */
+export const GROUP_BYS = ["none", "tag"] as const;
+export type GroupBy = (typeof GROUP_BYS)[number];
+
 export type HostListQuery = {
   search: string;
   status: StatusFilter;
@@ -360,6 +364,7 @@ export type HostListQuery = {
   tags: string[];
   sortBy: SortKey;
   sortDir: SortDir;
+  groupBy: GroupBy;
   page: number;
 };
 
@@ -405,7 +410,8 @@ export function parseHostListQuery(
         ? preferredSort.dir
         : DEFAULT_SORT_DIR[sortBy];
   const page = Math.max(1, Math.min(100_000, parseInt(first(params.page) ?? "1", 10) || 1));
-  return { search, status, protection, tags, sortBy, sortDir, page };
+  const groupBy: GroupBy = first(params.group) === "tag" ? "tag" : "none";
+  return { search, status, protection, tags, sortBy, sortDir, groupBy, page };
 }
 
 /** Name, domains, upstreams and tags, case-insensitively. */
@@ -449,7 +455,27 @@ export function primaryDomain(row: Pick<HostListRow, "domains" | "name">): strin
   return row.domains[0] ?? row.name;
 }
 
-export function sortHostRows(rows: readonly HostListRow[], sortBy: SortKey, sortDir: SortDir): HostListRow[] {
+/**
+ * The section a host belongs to when the list is grouped by tag: the first of
+ * its tags that the tag filter selected (all of its tags when none is), which
+ * is the alphabetically first as tags are stored sorted. Null without tags.
+ */
+export function hostGroupOf(row: Pick<HostListRow, "tags">, filterTags: readonly string[] = []): string | null {
+  const candidates = filterTags.length > 0 ? row.tags.filter((tag) => filterTags.includes(tag)) : row.tags;
+  return candidates[0] ?? null;
+}
+
+/**
+ * Sorts the list. Grouped by tag, the sections come first in alphabetical
+ * order (hosts without a tag last) and `sortBy` orders the hosts inside each.
+ */
+export function sortHostRows(
+  rows: readonly HostListRow[],
+  sortBy: SortKey,
+  sortDir: SortDir,
+  groupBy: GroupBy = "none",
+  filterTags: readonly string[] = []
+): HostListRow[] {
   const byHost = (a: HostListRow, b: HostListRow) => primaryDomain(a).localeCompare(primaryDomain(b)) || a.id - b.id;
   const compare: Record<SortKey, (a: HostListRow, b: HostListRow) => number> = {
     requests: (a, b) => (a.traffic?.requests ?? 0) - (b.traffic?.requests ?? 0),
@@ -459,5 +485,14 @@ export function sortHostRows(rows: readonly HostListRow[], sortBy: SortKey, sort
     host: byHost,
   };
   const sign = sortDir === "asc" ? 1 : -1;
-  return [...rows].sort((a, b) => sign * compare[sortBy](a, b) || byHost(a, b));
+  const byGroup = (a: HostListRow, b: HostListRow) => {
+    if (groupBy !== "tag") return 0;
+    const ga = hostGroupOf(a, filterTags);
+    const gb = hostGroupOf(b, filterTags);
+    if (ga === gb) return 0;
+    if (ga === null) return 1;
+    if (gb === null) return -1;
+    return ga < gb ? -1 : 1;
+  };
+  return [...rows].sort((a, b) => byGroup(a, b) || sign * compare[sortBy](a, b) || byHost(a, b));
 }

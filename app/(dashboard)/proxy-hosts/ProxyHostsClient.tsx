@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState, useTransition, type ReactNode } from "react";
 import Link from "next/link";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { ArrowDown, ArrowUp, ArrowUpDown, ChevronDown, MoreHorizontal, Plus, Server } from "lucide-react";
@@ -18,6 +18,7 @@ import {
   HIGH_ERROR_RATE,
   PROTECTION_FILTERS,
   PROTECTION_FILTER_LABELS,
+  hostGroupOf,
   primaryDomain,
   type HostListQuery,
   type HostListRow,
@@ -127,6 +128,10 @@ function SortHeader({
       </button>
     </th>
   );
+}
+
+function GroupHeading({ group }: { group: string | null }) {
+  return group === null ? <span>No tag</span> : <span className="num">{group}</span>;
 }
 
 function PlainHeader({ children, className }: { children: ReactNode; className?: string }) {
@@ -239,6 +244,8 @@ export default function ProxyHostsClient({
   // The Tags column only when some host has tags.
 
   const showTags = availableTags.length > 0 || rows.some((row) => row.tags.length > 0);
+  // Host, Status, Protection, Certificate and the actions, plus the optional columns.
+  const columnCount = (canWrite ? 1 : 0) + 5 + (showTraffic ? 2 : 0) + (showTags ? 1 : 0);
   const hostById = useMemo(() => new Map(hosts.map((host) => [host.id, host])), [hosts]);
 
   useEffect(() => {
@@ -332,6 +339,26 @@ export default function ProxyHostsClient({
       params.set("sortDir", dir);
     });
   }
+
+  function toggleGrouping() {
+    pushParams((params) => {
+      if (query.groupBy === "tag") params.delete("group");
+      else params.set("group", "tag");
+    });
+  }
+
+  /** The heading to show above a row: the first of the page, and wherever the section changes. */
+  const groupHeadings = useMemo(() => {
+    if (query.groupBy !== "tag") return new Map<number, string | null>();
+    const headings = new Map<number, string | null>();
+    let previous: string | null | undefined;
+    for (const row of rows) {
+      const group = hostGroupOf(row, query.tags);
+      if (group !== previous) headings.set(row.id, group);
+      previous = group;
+    }
+    return headings;
+  }, [rows, query.groupBy, query.tags]);
 
   function clearFilters() {
     setSearchTerm("");
@@ -541,6 +568,16 @@ export default function ProxyHostsClient({
                 ))}
               </DropdownMenuContent>
             </DropdownMenu>
+            <Button
+              variant="outline"
+              className="h-[38px]"
+              aria-pressed={query.groupBy === "tag"}
+              disabled={availableTags.length === 0}
+              title="Show the hosts in a section per tag"
+              onClick={toggleGrouping}
+            >
+              {query.groupBy === "tag" ? "Grouped by tag" : "Group by tag"}
+            </Button>
             {filtering && (
               <Button variant="ghost" size="sm" onClick={clearFilters}>
                 Clear filters
@@ -655,8 +692,15 @@ export default function ProxyHostsClient({
                       {rows.map((row) => {
                         const isSelected = selected.has(row.id);
                         return (
+                          <Fragment key={row.id}>
+                          {groupHeadings.has(row.id) && (
+                            <tr className="bg-panel2">
+                              <th scope="colgroup" colSpan={columnCount} className="border-b border-line px-[18px] py-1.5 text-left text-xs font-medium text-muted-foreground">
+                                <GroupHeading group={groupHeadings.get(row.id) ?? null} />
+                              </th>
+                            </tr>
+                          )}
                           <tr
-                            key={row.id}
                             className={cn(
                               "border-b border-line align-top last:border-b-0 hover:bg-panel2",
                               isSelected && "bg-brand-tint hover:bg-brand-tint",
@@ -701,6 +745,7 @@ export default function ProxyHostsClient({
                             )}
                             <td className="py-2.5 pl-1.5 pr-[18px] text-right">{actionsMenu(row)}</td>
                           </tr>
+                          </Fragment>
                         );
                       })}
                     </tbody>
@@ -709,8 +754,13 @@ export default function ProxyHostsClient({
 
                 <ul className="flex flex-col md:hidden" aria-label="Proxy hosts">
                   {rows.map((row) => (
+                    <Fragment key={row.id}>
+                    {groupHeadings.has(row.id) && (
+                      <li role="presentation" className="border-b border-line bg-panel2 px-4 py-1.5 text-xs font-medium text-muted-foreground">
+                        <GroupHeading group={groupHeadings.get(row.id) ?? null} />
+                      </li>
+                    )}
                     <li
-                      key={row.id}
                       className={cn(
                         "flex items-start gap-3 border-b border-line px-4 py-3.5 last:border-b-0",
                         selected.has(row.id) && "bg-brand-tint"
@@ -738,6 +788,7 @@ export default function ProxyHostsClient({
                       </div>
                       <div className="shrink-0">{actionsMenu(row)}</div>
                     </li>
+                    </Fragment>
                   ))}
                 </ul>
               </>
