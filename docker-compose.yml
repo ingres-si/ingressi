@@ -251,7 +251,7 @@ services:
         hard: 262144
 
   geoipupdate:
-    container_name: geoipupdate-${HOSTNAME}
+    container_name: ingressi-geoipupdate
     image: ghcr.io/maxmind/geoipupdate
     profiles: [geoipupdate]
     restart: always
