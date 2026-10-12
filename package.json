@@ -94,8 +94,8 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@next/eslint-plugin-next": "^16.3.7",
-    "@playwright/test": "^1.63.0",
+    "@next/eslint-plugin-next": "^16.4.0",
+    "@playwright/test": "^1.64.0",
     "@types/better-sqlite3": "^9.6.0",
     "@types/bun": "^1.4.2",
     "@types/d3-geo": "^3.1.1",
@@ -113,13 +113,13 @@
     "drizzle-kit": "^0.31.11",
     "eslint": "^10.12.0",
     "ioredis-mock": "8.13.1",
-    "shadcn": "^4.21.1",
+    "shadcn": "^4.21.4",
     "typescript": "npm:@typescript/typescript6@^6.0.2",
-    "typescript-eslint": "^8.71.0",
+    "typescript-eslint": "^8.71.1",
     "vite-tsconfig-paths": "^6.1.1",
     "vitest": "^5.0.2",
     "world-atlas": "^2.0.2",
-    "xml-crypto": "6.3.2"
+    "xml-crypto": "6.3.3"
   },
   "overrides": {
     "brace-expansion": "5.0.9",
