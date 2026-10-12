@@ -436,8 +436,8 @@ github.com/oschwald/maxminddb-golang v1.13.1 h1:G3wwjdN9JmIK2o/ermkHM+98oX5fS+k5
 github.com/oschwald/maxminddb-golang v1.13.1/go.mod h1:K4pgV9N/GcK694KSTmVSDTODk4IsCNThNdTmnaBZ/F8=
 github.com/ovh/go-ovh v1.7.0 h1:V14nF7FwDjQrZt9g7jzcvAAQ3HN6DNShRFRMC3jLoPw=
 github.com/ovh/go-ovh v1.7.0/go.mod h1:cTVDnl94z4tl8pP1uZ/8jlVxntjSIf09bNcQ5TJSC7c=
-github.com/pberkel/caddy-storage-redis v1.8.2 h1:n/zKWwfRQiCodSEHI8zFmbj3fU+Psv7PBSqRGJZL6xM=
-github.com/pberkel/caddy-storage-redis v1.8.2/go.mod h1:X+us3nm6Tz8iMuMqaO6ILCCfdCXBmAEZMeoDI92EO9U=
+github.com/pberkel/caddy-storage-redis v1.9.0 h1:dqCWeUOPpTRTxI1E342YXXJYw4jGOLIT35aupuMR398=
+github.com/pberkel/caddy-storage-redis v1.9.0/go.mod h1:X+us3nm6Tz8iMuMqaO6ILCCfdCXBmAEZMeoDI92EO9U=
 github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58 h1:onHthvaw9LFnH4t2DcNVpwGmV9E1BkGknEliJkfwQj0=
 github.com/pbnjay/memory v0.0.0-20210728143218-7b4eea64cf58/go.mod h1:DXv8WO4yhMYhSNPKjeNKa5WY9YCIEBRbNzFFPJbWO6Y=
 github.com/pelletier/go-toml v1.2.0/go.mod h1:5z9KED0ma1S8pY6P1sdut58dfprrGBbd/94hg7ilaic=
