@@ -313,6 +313,15 @@ describe('Analytics settings page', () => {
     expect(withTotals).toContain('30,545');
   });
 
+  it('shows why ClickHouse did not answer and what to check', () => {
+    const html = render({
+      analytics: { enabled: true, retentionDays: 30, retentionFromEnv: false, totals: null, totalsError: { label: 'Host name not found', note: 'docker compose logs clickhouse says why.' } },
+    });
+    expect(html).toContain('Host name not found');
+    expect(html).toContain('docker compose logs clickhouse says why.');
+    expect(html).not.toContain('Connected');
+  });
+
   it('warns that analytics stop while the access log is off', () => {
     expect(render({ logging: { enabled: false, format: 'json' } })).toContain('Traffic analytics get no new requests while access logging is off.');
   });

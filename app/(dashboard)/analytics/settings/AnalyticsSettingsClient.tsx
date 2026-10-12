@@ -8,6 +8,7 @@ import { SectionCard } from "@/components/ui/SectionCard";
 import { StatusDot } from "@/components/ui/StatusDot";
 import { formatBytes, formatCompact, formatCount } from "@/components/ui/chart-format";
 import type { LoggingSettings, MetricsSettings } from "@/lib/settings";
+import type { ClickHouseFailure } from "@/src/lib/clickhouse/failure";
 import { CardNote, ChoiceField, OverrideRow, SettingRow, SettingRows, SettingsForm, SettingsGroupForms, ToggleField } from "@/src/components/settings/settings-form";
 import { updateLoggingSettingsAction, updateMetricsSettingsAction } from "../../settings/actions";
 import { useUnsavedWarning } from "../../settings/use-unsaved-warning";
@@ -23,8 +24,8 @@ export type AnalyticsStatusView = {
   retentionFromEnv: boolean;
   /** Totals over the retention window; null without analytics:read, or when ClickHouse did not answer. */
   totals: { requests: number; wafEvents: number; bytes: number; uniqueAddresses: number } | null;
-  /** Why the totals are missing although analytics run (ClickHouse unreachable or slow). */
-  totalsError: string | null;
+  /** Why the totals are missing although analytics run (ClickHouse unreachable or slow), and what to check. */
+  totalsError: ClickHouseFailure | null;
 };
 
 export type AnalyticsSettingsProps = {
@@ -75,13 +76,13 @@ function TrafficAnalyticsCard({ analytics }: { analytics: AnalyticsStatusView })
       <SettingRows>
         <SettingRow
           label="ClickHouse"
-          note={analytics.enabled ? undefined : "Set CLICKHOUSE_PASSWORD and recreate the web container to turn it on."}
+          note={analytics.enabled ? analytics.totalsError?.note ?? undefined : "Set CLICKHOUSE_PASSWORD and recreate the web container to turn it on."}
         >
           <span className="flex min-h-9 items-center">
             {!analytics.enabled ? (
               <StatusDot tone="off" label="Off" />
             ) : analytics.totalsError ? (
-              <StatusDot tone="warn" label={analytics.totalsError} />
+              <StatusDot tone="warn" label={analytics.totalsError.label} />
             ) : (
               <StatusDot tone="ok" label="Connected" />
             )}
