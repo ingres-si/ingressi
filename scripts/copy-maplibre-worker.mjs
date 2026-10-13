@@ -12,13 +12,15 @@
  *                    worker and the map renders as an empty ocean.
  *   - `next build` → resolves to the wrong dist file (the main bundle).
  *
- * Pointing maplibre at a bundler-emitted asset does not work either: the worker
- * is an ES module that imports `./maplibre-gl-shared.mjs`, and Turbopack emits
- * each dist file under a different content-hashed name without rewriting those
- * relative imports, so the sibling import 404s.
+ * Pointing maplibre at a bundler-emitted asset does not work either: up to
+ * maplibre-gl 6.12 the worker is an ES module that imports
+ * `./maplibre-gl-shared.mjs`, and Turbopack emits each dist file under a
+ * different content-hashed name without rewriting those relative imports, so
+ * the sibling import 404s. From 6.13 the worker is self-contained.
  *
  * Copying the worker's whole module graph verbatim keeps the relative imports
- * resolvable. `WorldMapInner.tsx` then calls `setWorkerUrl()` with this path.
+ * resolvable, whichever way a release splits it. `WorldMapInner.tsx` then calls
+ * `setWorkerUrl()` with this path.
  *
  * Runs from next.config.mjs so it covers `next dev`, `next build` and the Docker
  * build alike, under both Node and Bun, with no extra lifecycle script wiring.
@@ -37,7 +39,7 @@ export const WORKER_PUBLIC_PATH = `/${PUBLIC_DIR}/${WORKER_ENTRY}`;
 /**
  * Relative specifiers of `from './x'`, `import './x'` and `import('./x')`, so we
  * follow the worker's chunk graph. maplibre's dist is minified, so whitespace is
- * routinely absent — the worker entry opens with `}from"./maplibre-gl-shared.mjs"`.
+ * routinely absent — up to 6.12 the worker entry opens with `}from"./maplibre-gl-shared.mjs"`.
  */
 function relativeImports(source) {
   const specifiers = new Set();
