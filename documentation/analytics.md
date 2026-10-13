@@ -44,6 +44,15 @@ GEOIPUPDATE_ACCOUNT_ID=…
 GEOIPUPDATE_LICENSE_KEY=…
 ```
 
+### When ClickHouse does not answer
+
+**Analytics settings** shows whether the dashboard reaches ClickHouse, and what to check when it does not:
+
+- **Host name not found** (`getaddrinfo ENOTFOUND clickhouse` in `docker compose logs web`): the ClickHouse container is not running. Docker's DNS has no entry for a container that is stopped or between restarts, so this usually means ClickHouse exits at start-up and `docker compose ps` shows it as `Restarting`. `docker compose logs clickhouse` says why. A CPU that lacks SSE 4.2 stops it with *Instruction check fail*: on a Proxmox VM, set the CPU type to `host` or `x86-64-v2-AES` instead of `kvm64`. ARM boards older than ARMv8.2, such as the Raspberry Pi 4, cannot run ClickHouse.
+- **Connection refused**: ClickHouse is starting, or `CLICKHOUSE_URL` points at a port where nothing listens. If it lasts, `docker compose logs clickhouse` says why.
+
+`docker compose up -d` printing *Skipped: optional dependency "clickhouse"* means the same: ClickHouse never became healthy, so the web container started without it. Leave `CLICKHOUSE_URL`, `CLICKHOUSE_USER` and `CLICKHOUSE_DB` unset with the bundled ClickHouse; their defaults match it.
+
 ## What each request records
 
 The web container reads Caddy's access log every 30 seconds and stores one row per request in the ClickHouse table `traffic_events`:

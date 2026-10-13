@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import { createRequire } from 'node:module';
-import { readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import {
   copyMaplibreWorker,
@@ -41,8 +41,14 @@ describe('maplibre worker staging', () => {
       (m) => m[1],
     );
 
-    // Guards against the copier's import regex silently matching nothing.
-    expect(deps).toContain('maplibre-gl-shared.mjs');
+    // Guards against the import regex silently matching nothing: every other
+    // dist module the worker names must be among the imports followed. Up to
+    // maplibre-gl 6.12 that is maplibre-gl-shared.mjs; from 6.13 the worker is
+    // self-contained and names none.
+    const named = readdirSync(distDir).filter(
+      (name) => name.endsWith('.mjs') && name !== 'maplibre-gl-worker.mjs' && worker.includes(name),
+    );
+    expect(deps).toEqual(expect.arrayContaining(named));
 
     for (const dep of new Set(deps)) {
       expect(

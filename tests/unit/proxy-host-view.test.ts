@@ -167,7 +167,7 @@ describe('list query', () => {
   });
 
   it('accepts the earlier sort keys and ignores unknown values', () => {
-    expect(parseHostListQuery({ sortBy: 'name', sortDir: 'desc' }, true)).toMatchObject({ sortBy: 'host', sortDir: 'desc' });
+    expect(parseHostListQuery({ sortBy: 'name', sortDir: 'desc' }, true)).toMatchObject({ sortBy: 'name', sortDir: 'desc' });
     expect(parseHostListQuery({ sortBy: 'enabled' }, true)).toMatchObject({ sortBy: 'status', sortDir: 'asc' });
     expect(parseHostListQuery({ sortBy: 'createdAt' }, true)).toMatchObject({ sortBy: 'created', sortDir: 'desc' });
     expect(parseHostListQuery({ sortBy: 'drop table', sortDir: 'sideways', status: 'nope', protection: 'magic', page: '-4' }, true)).toMatchObject({
@@ -230,6 +230,18 @@ describe('filters and sort', () => {
     expect(hostGroupOf(rows[0])).toBeNull();
     expect(parseHostListQuery({ group: 'tag' }, false).groupBy).toBe('tag');
     expect(parseHostListQuery({ group: 'nope' }, false).groupBy).toBe('none');
+  });
+
+  it('sorts by the host name apart from its domain', () => {
+    const rows = [
+      row(1, { name: '📺 Sonarr', domains: ['z.example.com'] }),
+      row(2, { name: '☁️ Nextcloud', domains: ['a.example.com'] }),
+      row(3, { name: '📺 Radarr', domains: ['m.example.com'] }),
+    ];
+    const asc = sortHostRows(rows, 'name', 'asc').map((r) => r.id);
+    expect(asc.indexOf(3)).toBeLessThan(asc.indexOf(1));
+    expect(sortHostRows(rows, 'name', 'desc').map((r) => r.id)).toEqual([...asc].reverse());
+    expect(parseHostListQuery({ sortBy: 'name' }, false)).toMatchObject({ sortBy: 'name', sortDir: 'asc' });
   });
 
   it('sorts by traffic, status and name with a stable tie-break', () => {

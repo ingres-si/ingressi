@@ -44,6 +44,7 @@ type SortChoice<K extends string> = { key: K; label: string; defaultDir: SortDir
 
 const PROXY_HOST_SORTS: readonly SortChoice<ProxyHostSortKey>[] = [
   { key: "host", label: "Host name", defaultDir: "asc" },
+  { key: "name", label: "Name", defaultDir: "asc" },
   { key: "requests", label: "Requests", defaultDir: "desc" },
   { key: "status", label: "Status", defaultDir: "asc" },
   { key: "errors", label: "5xx rate", defaultDir: "desc" },

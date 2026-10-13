@@ -7,7 +7,7 @@ export type SortDirection = (typeof SORT_DIRECTIONS)[number];
 
 export type StoredSortPreference<K extends string> = "default" | `${K}:${SortDirection}`;
 
-export const PROXY_HOST_SORT_KEYS = ["requests", "host", "status", "errors", "created"] as const;
+export const PROXY_HOST_SORT_KEYS = ["requests", "host", "name", "status", "errors", "created"] as const;
 export type ProxyHostSortKey = (typeof PROXY_HOST_SORT_KEYS)[number];
 export type ProxyHostsSortPreference = StoredSortPreference<ProxyHostSortKey>;
 

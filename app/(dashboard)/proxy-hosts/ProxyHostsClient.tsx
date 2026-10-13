@@ -101,31 +101,46 @@ function plural(n: number, one: string, many = `${one}s`): string {
   return `${n.toLocaleString("en-US")} ${n === 1 ? one : many}`;
 }
 
+function SortButton({ label, sortKey, query, onSort }: { label: string; sortKey: SortKey; query: HostListQuery; onSort: (key: SortKey) => void }) {
+  const active = query.sortBy === sortKey;
+  const Icon = active ? (query.sortDir === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
+  return (
+    <button type="button" onClick={() => onSort(sortKey)} className="inline-flex items-center gap-1 rounded hover:text-foreground">
+      {label}
+      <Icon aria-hidden="true" className={cn("h-3.5 w-3.5", !active && "opacity-50")} />
+    </button>
+  );
+}
+
 function SortHeader({
   label,
   sortKey,
+  alsoSortKey,
+  alsoLabel,
   query,
   onSort,
   className,
 }: {
   label: string;
   sortKey: SortKey;
+  /** A second sort offered in the same column, e.g. the host's name next to its domain. */
+  alsoSortKey?: SortKey;
+  alsoLabel?: string;
   query: HostListQuery;
   onSort: (key: SortKey) => void;
   className?: string;
 }) {
-  const active = query.sortBy === sortKey;
-  const Icon = active ? (query.sortDir === "asc" ? ArrowUp : ArrowDown) : ArrowUpDown;
+  const active = query.sortBy === sortKey || (alsoSortKey !== undefined && query.sortBy === alsoSortKey);
   return (
     <th
       scope="col"
       aria-sort={active ? (query.sortDir === "asc" ? "ascending" : "descending") : "none"}
       className={cn("border-b border-line px-2.5 py-2 font-medium", className)}
     >
-      <button type="button" onClick={() => onSort(sortKey)} className="inline-flex items-center gap-1 rounded hover:text-foreground">
-        {label}
-        <Icon aria-hidden="true" className={cn("h-3.5 w-3.5", !active && "opacity-50")} />
-      </button>
+      <span className="inline-flex items-center gap-3">
+        <SortButton label={label} sortKey={sortKey} query={query} onSort={onSort} />
+        {alsoSortKey && alsoLabel && <SortButton label={alsoLabel} sortKey={alsoSortKey} query={query} onSort={onSort} />}
+      </span>
     </th>
   );
 }
@@ -676,7 +691,7 @@ export default function ProxyHostsClient({
                             />
                           </th>
                         )}
-                        <SortHeader label="Host" sortKey="host" query={query} onSort={handleSort} className={cn(!canWrite && "pl-[18px]")} />
+                        <SortHeader label="Host" sortKey="host" alsoLabel="Name" alsoSortKey="name" query={query} onSort={handleSort} className={cn(!canWrite && "pl-[18px]")} />
                         <SortHeader label="Status" sortKey="status" query={query} onSort={handleSort} />
                         {showTraffic && <SortHeader label="Requests, 24h" sortKey="requests" query={query} onSort={handleSort} />}
                         {showTraffic && <SortHeader label="5xx" sortKey="errors" query={query} onSort={handleSort} className="text-right" />}

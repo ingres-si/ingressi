@@ -2,6 +2,7 @@ import { requirePermission } from "@/src/lib/auth";
 import { can, type Access } from "@/src/lib/permissions";
 import { getLoggingSettings, getMetricsSettings } from "@/src/lib/settings";
 import { getRetentionDays, isAnalyticsEnabled, querySummary, queryWafCount } from "@/src/lib/clickhouse/client";
+import { describeClickHouseFailure } from "@/src/lib/clickhouse/failure";
 import { loadReplicaOverrides } from "../../settings/load";
 import AnalyticsSettingsClient, { type AnalyticsStatusView } from "./AnalyticsSettingsClient";
 
@@ -38,7 +39,9 @@ async function analyticsStatus(access: Access): Promise<AnalyticsStatusView> {
     view.totals = { requests: summary.totalRequests, wafEvents, bytes: summary.bytesServed, uniqueAddresses: summary.uniqueIps };
   } catch (error) {
     view.totalsError =
-      error instanceof Error && error.message === "timeout" ? "Did not answer within a few seconds" : "Not reachable from the dashboard";
+      error instanceof Error && error.message === "timeout"
+        ? { label: "Did not answer within a few seconds", note: null }
+        : describeClickHouseFailure(error);
   } finally {
     if (timer) clearTimeout(timer);
   }
