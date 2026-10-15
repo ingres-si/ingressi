@@ -27,7 +27,7 @@ require (
 	github.com/caddy-dns/spaceship v1.0.0
 	github.com/caddy-dns/vultr v0.0.0-20250723121531-55bf3e9768be
 	github.com/caddyserver/caddy/v2 v2.11.7
-	github.com/corazawaf/coraza-caddy/v2 v2.6.1
+	github.com/corazawaf/coraza-caddy/v2 v2.6.2
 	github.com/fuomag9/caddy-blocker-plugin v0.0.0-20260728192246-a1ff7050deb7
 	github.com/mholt/caddy-l4 v0.1.2
 	github.com/mholt/caddy-ratelimit v0.1.1-0.20260612195517-5625512f24f6
