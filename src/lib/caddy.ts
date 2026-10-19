@@ -135,6 +135,23 @@ import {
   normalizeRuleValue,
 } from "./access-list-rules";
 
+/**
+ * Headers removed from every forward-auth subrequest. The verify call is a
+ * plain GET to the auth service; if the client's WebSocket handshake headers
+ * went with it, Caddy would treat the subrequest as an upgrade, the auth
+ * service (CPM's Next.js server, Authentik, …) would drop or refuse it, and
+ * every WebSocket on a protected host would end in 502 Bad Gateway. The
+ * request to the upstream app is a separate handler and keeps them.
+ */
+export const FORWARD_AUTH_SUBREQUEST_STRIP_HEADERS = [
+  "Connection",
+  "Upgrade",
+  "Sec-WebSocket-Key",
+  "Sec-WebSocket-Version",
+  "Sec-WebSocket-Extensions",
+  "Sec-WebSocket-Protocol"
+];
+
 const CERTS_DIR = process.env.CERTS_DIRECTORY || join(process.cwd(), "data", "certs");
 mkdirSync(CERTS_DIR, { recursive: true, mode: 0o700 });
 
@@ -1737,7 +1754,8 @@ async function buildProxyRoutes(
             set: {
               "X-Forwarded-Method": ["{http.request.method}"],
               "X-Forwarded-Uri": ["{http.request.uri}"]
-            }
+            },
+            delete: [...FORWARD_AUTH_SUBREQUEST_STRIP_HEADERS]
           }
         },
         handle_response: [
@@ -2166,7 +2184,8 @@ async function buildProxyRoutes(
                 "X-Forwarded-Proto": ["{http.request.scheme}"],
                 [FORWARD_AUTH_PROXY_PROOF_HEADER]: [dashboardProxyProof],
                 [FORWARD_AUTH_PROXY_HOST_ID_HEADER]: [String(row.id)]
-              }
+              },
+              delete: [...FORWARD_AUTH_SUBREQUEST_STRIP_HEADERS]
             }
           },
           handle_response: [
@@ -4099,7 +4118,8 @@ function buildGenericForwardAuthHandler(cfg: ForwardAuthRouteConfig, api401: boo
           "X-Forwarded-Uri": ["{http.request.uri}"],
           "X-Forwarded-Host": ["{http.request.hostport}"],
           "X-Forwarded-Proto": ["{http.request.scheme}"]
-        }
+        },
+        delete: [...FORWARD_AUTH_SUBREQUEST_STRIP_HEADERS]
       }
     },
     handle_response: handleResponse
