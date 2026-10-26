@@ -32,7 +32,7 @@
     "screenshots:site": "playwright test --config tests/playwright.shots.config.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.135.0",
+    "@anthropic-ai/sdk": "^1.1.0",
     "@better-auth/passkey": "1.7.10",
     "@clickhouse/client": "^1.24.1",
     "@coinbase/x402": "2.1.0",

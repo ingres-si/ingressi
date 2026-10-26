@@ -5,7 +5,7 @@
     "": {
       "name": "ingressi",
       "dependencies": {
-        "@anthropic-ai/sdk": "^0.135.0",
+        "@anthropic-ai/sdk": "^1.1.0",
         "@better-auth/passkey": "1.7.10",
         "@clickhouse/client": "^1.24.1",
         "@coinbase/x402": "2.1.0",
@@ -107,7 +107,7 @@
 
     "@alloc/quick-lru": ["@alloc/quick-lru@5.2.0", "", {}, "sha512-UrcABB+4bUrFABwbluTIBErXwvbsU/V7TZWfmbgJfbkwiBuziS9gxdODUyuiecfdGQ85jglMW6juS3+z5TsKLw=="],
 
-    "@anthropic-ai/sdk": ["@anthropic-ai/sdk@0.135.0", "", { "dependencies": { "@opentelemetry/api": "^1.4.1", "json-schema-to-ts": "^3.1.1", "standardwebhooks": "^1.0.0" }, "peerDependencies": { "zod": "^3.25.0 || ^4.0.0" }, "optionalPeers": ["zod"], "bin": { "anthropic-ai-sdk": "bin/cli" } }, "sha512-WWrdL57JhU5KoynpTjt9GXK6k7ud9nPw2uw/Trn+oBXh6s0KpjhAccWZm2Qxw08ARYG1UDQj5iC+JO42j1rt/g=="],
+    "@anthropic-ai/sdk": ["@anthropic-ai/sdk@1.1.0", "", { "dependencies": { "@opentelemetry/api": "^1.4.1", "json-schema-to-ts": "^3.1.1", "standardwebhooks": "^1.0.0" }, "peerDependencies": { "zod": "^3.25.0 || ^4.0.0" }, "optionalPeers": ["zod"], "bin": { "anthropic-ai-sdk": "bin/cli" } }, "sha512-Op/fKMsfVwFCfObc87leLOFlORE0RjOvLzRzPCWWLI7Ww6bobpKR6YmYC8ZYgulRh+m2a/3/61VUXoWHFtCXIw=="],
 
     "@babel/code-frame": ["@babel/code-frame@7.29.0", "", { "dependencies": { "@babel/helper-validator-identifier": "^7.28.5", "js-tokens": "^4.0.0", "picocolors": "^1.1.1" } }, "sha512-9NhCeYjq9+3uxgdtp20LSiJXJvN0FeCtNGpJxuMFZ1Kv3cWUNb6DOhJwUvcVCzKGR66cw4njwM6hrJLqgOwbcw=="],
 
