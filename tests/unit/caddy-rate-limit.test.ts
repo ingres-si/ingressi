@@ -2,7 +2,7 @@
  * Rate limiting in the generated Caddy configuration (src/lib/caddy-rate-limit.ts,
  * buildProxyRoutes in src/lib/caddy.ts):
  *  - inheritance of the global defaults (inherit, merge, override, opt-out);
- *  - the zones: client IP via {http.request.client_ip} with IPv6 grouping,
+ *  - the zones: client IP via {http.vars.client_ip} with IPv6 grouping,
  *    header and signed-in-user keys with a client-IP fallback, the allowlist
  *    on every zone, metrics off;
  *  - placement: the limiter is invoked first on every route of a host (main,
@@ -132,7 +132,7 @@ describe('resolveEffectiveRateLimitRules', () => {
 describe('buildHostRateLimit', () => {
   const context = rateLimitContext({ enabled: true, rules: [], allowlist: ['192.0.2.0/24', 'private_ranges'], ipv6Prefix: 56 });
 
-  it('keys client-IP rules by {http.request.client_ip}, grouped by the IPv6 prefix, with metrics off', () => {
+  it('keys client-IP rules by {http.vars.client_ip}, grouped by the IPv6 prefix, with metrics off', () => {
     const result = buildHostRateLimit(7, [ipRule], context, false);
     expect(result.early).toEqual({ handler: 'invoke', name: 'ingressi_rl_h7' });
     expect(result.beforeUpstream).toBeNull();
@@ -147,7 +147,7 @@ describe('buildHostRateLimit', () => {
         method: ['POST'],
         not: [{ client_ip: { ranges: ['192.0.2.0/24', '10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '127.0.0.0/8', 'fd00::/8', '::1/128'] } }],
       }],
-      key: '{http.request.client_ip}',
+      key: '{http.vars.client_ip}',
       window: '1m',
       max_events: 5,
       ipv6_prefix: 56,
@@ -173,7 +173,7 @@ describe('buildHostRateLimit', () => {
     expect(present.key).toBe('{http.request.header.X-Api-Key}');
     expect(present.match[0].header).toEqual({ 'X-Api-Key': ['*'] });
     expect(present).not.toHaveProperty('ipv6_prefix');
-    expect(absent.key).toBe('{http.request.client_ip}');
+    expect(absent.key).toBe('{http.vars.client_ip}');
     expect(absent.match[0].not).toContainEqual({ header: { 'X-Api-Key': ['*'] } });
     expect(absent.match[0].not[0].client_ip.ranges).toContain('192.0.2.0/24');
   });
@@ -193,7 +193,7 @@ describe('buildHostRateLimit', () => {
     expect(user.key).toBe('{http.request.header.X-Ingressi-User-Id}');
     expect(user.match[0]).toMatchObject({ vars: { [pathVar]: ['1'] }, header: { 'X-Ingressi-User-Id': ['*'] } });
     expect(user.match[0]).not.toHaveProperty('path');
-    expect(anonymous.key).toBe('{http.request.client_ip}');
+    expect(anonymous.key).toBe('{http.vars.client_ip}');
     expect(anonymous.match[0].not).toContainEqual({ header: { 'X-Ingressi-User-Id': ['*'] } });
   });
 
@@ -203,7 +203,7 @@ describe('buildHostRateLimit', () => {
     const zones = (result.namedRoutes.ingressi_rl_h5.handle as Handler[])[0].rate_limits as Record<string, any>;
     const [[name, zone]] = Object.entries(zones);
     expect(name).toMatch(/_user_ip$/);
-    expect(zone).toMatchObject({ key: '{http.request.client_ip}', match: [{ path: ['/api/*'] }] });
+    expect(zone).toMatchObject({ key: '{http.vars.client_ip}', match: [{ path: ['/api/*'] }] });
   });
 
   it('names zones per host and per rule, stably', () => {

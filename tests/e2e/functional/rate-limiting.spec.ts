@@ -10,6 +10,8 @@
  *     is reached, only on its path; other paths keep working.
  *   - Method filters: only the listed methods are counted.
  *   - A header-keyed rule counts each header value on its own.
+ *   - A client-IP rule counts each client on its own (two clients behind a
+ *     trusted proxy, told apart by X-Forwarded-For).
  *   - A custom error page for 429 is served with the status preserved.
  *   - Global defaults apply to hosts without rules of their own, an
  *     override with no rules opts a host out, and the allowlist exempts
@@ -133,6 +135,50 @@ test.describe.serial('Rate limiting — per host', () => {
     expect(await statuses(DOMAIN, '/api/one', 3, { 'X-Api-Key': 'key-one' })).toEqual([200, 200, 429]);
     expect(await statuses(DOMAIN, '/api/one', 2, { 'X-Api-Key': 'key-two' })).toEqual([200, 200]);
     expect(await statuses(DOMAIN, '/api/one', 3)).toEqual([200, 200, 429]);
+  });
+});
+
+test.describe.serial('Rate limiting — one counter per client', () => {
+  const DOMAIN = 'func-rate-limit-per-client.test';
+  const hostIds: number[] = [];
+  let originalTrustedProxies: Record<string, unknown> = { ranges: [] };
+
+  async function putTrustedProxies(page: Page, data: Record<string, unknown>): Promise<void> {
+    const res = await page.request.put(`${API}/settings/trusted-proxies`, {
+      data,
+      headers: { 'Content-Type': 'application/json', Origin: BASE_URL },
+    });
+    expect(res.status(), await res.text()).toBe(200);
+  }
+
+  test.beforeAll(async ({ browser }) => {
+    const page = await browser.newPage();
+    const current = (await (await page.request.get(`${API}/settings/trusted-proxies`)).json()) as Record<string, unknown> | null;
+    if (current && Object.keys(current).length > 0) originalTrustedProxies = { ranges: [], ...current };
+    await setDefaults(page, { enabled: false, rules: [], allowlist: [] });
+    // The test client reaches Caddy from the private Docker gateway: trusted,
+    // its X-Forwarded-For names the client, so one test client can be several.
+    await putTrustedProxies(page, { ranges: ['private_ranges'] });
+    hostIds.push(await createHost(page, 'Functional Rate Limit Per Client', DOMAIN, {
+      rateLimit: { mode: 'override', rules: [{ path: '/per-client/*', events: 2, window: '1m' }] },
+    }));
+    await waitForRoute(DOMAIN);
+    await page.close();
+  });
+
+  test.afterAll(async ({ browser }) => {
+    const page = await browser.newPage();
+    await putTrustedProxies(page, originalTrustedProxies);
+    await deleteHosts(page, hostIds);
+    await page.close();
+  });
+
+  test('a client over the limit does not limit the others', async () => {
+    expect(await statuses(DOMAIN, '/per-client/a', 3, { 'X-Forwarded-For': '203.0.113.1' })).toEqual([200, 200, 429]);
+    expect(await statuses(DOMAIN, '/per-client/a', 2, { 'X-Forwarded-For': '203.0.113.2' })).toEqual([200, 200]);
+    expect(await statuses(DOMAIN, '/per-client/a', 1, { 'X-Forwarded-For': '2001:db8:1::1' })).toEqual([200]);
+    expect(await statuses(DOMAIN, '/per-client/b', 1, { 'X-Forwarded-For': '203.0.113.1' })).toEqual([429]);
+    expect(await statuses(DOMAIN, '/per-client/b', 1, { 'X-Forwarded-For': '203.0.113.2' })).toEqual([429]);
   });
 });
 

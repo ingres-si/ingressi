@@ -52,7 +52,9 @@ export const RATE_LIMIT_LOG_FIELD = "rate_limit_zone";
 /** The user id Ingressi forward auth sets on the request: a stable key a user cannot choose. */
 const FORWARD_AUTH_USER_HEADER = FORWARD_AUTH_IDENTITY_HEADERS.userId;
 
-const CLIENT_IP_KEY = "{http.request.client_ip}";
+// The client address Caddy works out (after trusted proxies). Caddy has no
+// {http.request.client_ip}: a key with it is empty, and every client shares one bucket.
+const CLIENT_IP_KEY = "{http.vars.client_ip}";
 
 // ── Validation ──────────────────────────────────────────────────────────
 

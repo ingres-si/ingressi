@@ -1,7 +1,7 @@
 /**
  * Server-level trusted_proxies / client_ip_headers support (issue #222).
  *
- * Caddy resolves {http.request.client_ip} in core, before any handler runs, so
+ * Caddy resolves {http.vars.client_ip} in core, before any handler runs, so
  * the only place a global trusted-proxy list can correct client-IP attribution
  * (access logs, analytics, downstream handlers) is the HTTP server object
  * itself (servers.ingressi). These tests cover the pure builder plus the emission

@@ -1027,7 +1027,7 @@ export function normalizeTrustedProxyRanges(ranges: string[] | undefined | null)
 
 /**
  * Build the server-level trusted-proxy fields for the main HTTP server object
- * (`servers.ingressi`). Caddy resolves `{http.request.client_ip}` in core — before
+ * (`servers.ingressi`). Caddy resolves `{http.vars.client_ip}` in core — before
  * any handler runs — so this is the only place a global trusted-proxy list can
  * fix client-IP attribution for access logs, analytics and downstream handlers.
  *
