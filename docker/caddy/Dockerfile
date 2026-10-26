@@ -20,7 +20,7 @@ RUN XCADDY_VERSION="$(go list -m -f '{{.Version}}' github.com/caddyserver/xcaddy
     go install github.com/caddyserver/xcaddy/cmd/xcaddy@"${XCADDY_VERSION}"
 RUN sh ./build.sh
 
-FROM ubuntu:26.04@sha256:da6fc2be547864451aa253836dd926da33623312df4a9a243e35dc877c378a78
+FROM ubuntu:26.04@sha256:c098726dd9b9733f3e885f8de0ef375206a311b0a317eadc40d347b1115fb944
 
 # Accept build args for user/group IDs to support rootless operation
 # Using 10000 as default to avoid conflicts with system users
