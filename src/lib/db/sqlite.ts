@@ -632,7 +632,9 @@ type BetterSqliteStatement = {
 type AnyStatement = BunStatement | BetterSqliteStatement;
 
 function isBetterSqliteStatement(statement: AnyStatement): statement is BetterSqliteStatement {
-  return typeof (statement as BetterSqliteStatement).raw === "function"
+  // Newer bun:sqlite statements also carry raw() and reader, so bun's own values() rules them out.
+  return typeof (statement as BunStatement).values !== "function"
+    && typeof (statement as BetterSqliteStatement).raw === "function"
     && typeof (statement as BetterSqliteStatement).reader === "boolean";
 }
 
