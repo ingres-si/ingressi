@@ -129,10 +129,15 @@ export function proxiedHttpGet(
   });
 }
 
-/** GET https://<domain><path> through Caddy's port 443: the PROXY header first, then the TLS handshake. */
+/**
+ * GET https://<domain><path> through Caddy's port 443: the PROXY header
+ * first, then the TLS handshake. The certificate Caddy serves is verified
+ * against `ca`, the PEM the test gave Caddy for the domain.
+ */
 export function proxiedHttpsGet(
   domain: string,
   header: Buffer | null,
+  ca: string,
   path = '/',
   extraHeaders: Record<string, string> = {}
 ): Promise<ProxiedResponse> {
@@ -145,8 +150,8 @@ export function proxiedHttpsGet(
         method: 'GET',
         headers: { Host: domain, Connection: 'close', ...extraHeaders },
         servername: domain,
-        rejectUnauthorized: false,
-        createConnection: () => tls.connect({ socket: connect(443, header), servername: domain, rejectUnauthorized: false, ALPNProtocols: ['http/1.1'] }),
+        ca,
+        createConnection: () => tls.connect({ socket: connect(443, header), servername: domain, ca, ALPNProtocols: ['http/1.1'] }),
       },
       (res) => collect(res, resolve)
     );

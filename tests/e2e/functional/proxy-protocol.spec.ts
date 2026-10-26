@@ -74,6 +74,8 @@ let peer = '';
 let original: { trustedProxies: Record<string, unknown>; geoblock: Record<string, unknown>; logging: Record<string, unknown> };
 const hostIds: number[] = [];
 let certificateId: number | null = null;
+/** The self-signed certificate the TLS host serves: HTTPS requests trust exactly it. */
+let tlsCertificatePem = '';
 let accessListId: number | null = null;
 const blockedEntries: number[] = [];
 
@@ -173,6 +175,7 @@ test.describe.serial('PROXY protocol on ports 80 and 443', () => {
 
     await createHost('PROXY protocol open', OPEN);
     const cert = createSelfSignedServerCertificate(TLS, [TLS]);
+    tlsCertificatePem = cert.certificatePem;
     const certRes = await api.post(`${API}/certificates`, {
       headers: HEADERS,
       data: { name: 'PROXY protocol TLS', type: 'imported', domainNames: [TLS], autoRenew: false, certificatePem: cert.certificatePem, privateKeyPem: cert.privateKeyPem },
@@ -292,7 +295,7 @@ test.describe.serial('PROXY protocol on ports 80 and 443', () => {
   });
 
   test('sources that do not include the client: an HTTPS connection ignores the header too', async () => {
-    const res = await proxiedHttpsGet(TLS, proxyV2('203.0.113.7', { destinationPort: 443 }));
+    const res = await proxiedHttpsGet(TLS, proxyV2('203.0.113.7', { destinationPort: 443 }), tlsCertificatePem);
     expect(res.status).toBe(200);
     expect(forwardedFor(res.body)).toBe(peer);
   });
@@ -402,13 +405,13 @@ test.describe.serial('PROXY protocol on ports 80 and 443', () => {
   });
 
   test('HTTPS: a v1 or v2 header before the TLS handshake names the client', async () => {
-    const v2 = await proxiedHttpsGet(TLS, proxyV2('203.0.113.44', { destinationPort: 443 }));
+    const v2 = await proxiedHttpsGet(TLS, proxyV2('203.0.113.44', { destinationPort: 443 }), tlsCertificatePem);
     expect(v2.status).toBe(200);
     expect(v2.body).toContain(THROUGH);
     expect(forwardedFor(v2.body)).toBe('203.0.113.44');
     expect(v2.body).toMatch(/^X-Forwarded-Proto: https$/im);
 
-    const v1 = await proxiedHttpsGet(TLS, proxyV1('2001:db8::44', { destinationPort: 443 }));
+    const v1 = await proxiedHttpsGet(TLS, proxyV1('2001:db8::44', { destinationPort: 443 }), tlsCertificatePem);
     expect(v1.status).toBe(200);
     expect(forwardedFor(v1.body)).toBe('2001:db8::44');
   });
@@ -417,7 +420,7 @@ test.describe.serial('PROXY protocol on ports 80 and 443', () => {
     const res = await httpsGet(TLS);
     expect(res.status).toBe(200);
     expect(forwardedFor(res.body)).toBe(peer);
-    expect(forwardedFor((await proxiedHttpsGet(TLS, proxyV2Local())).body)).toBe(peer);
+    expect(forwardedFor((await proxiedHttpsGet(TLS, proxyV2Local(), tlsCertificatePem)).body)).toBe(peer);
   });
 
   // ── What reads the client address ─────────────────────────────────────
