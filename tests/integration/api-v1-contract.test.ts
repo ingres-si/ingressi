@@ -99,6 +99,7 @@ describe('v1 OpenAPI schemas: no top-level snake_case', () => {
     'MtlsConfig',
     'RewriteConfig',
     'IngressiForwardAuthConfig',
+    'TrustedProxiesSettings',
   ]);
   // Properties on otherwise-camelCase schemas that we intentionally keep
   // snake_case because the route handler reads them that way.

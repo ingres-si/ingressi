@@ -249,6 +249,30 @@ describe('Host defaults page', () => {
     expect(html.match(/data-testid="settings-save-bar"/g)).toHaveLength(1);
     expect(html).toContain('No unsaved changes.');
   });
+
+  it('has the PROXY protocol sources under Trusted proxies, empty by default', () => {
+    const html = render();
+    const card = html.slice(html.indexOf('id="trusted-proxies"'), html.indexOf('id="upstream-dns"'));
+    expect(card).toContain('PROXY protocol from');
+    expect(card).toContain('for="settings-proxy-protocol-ranges"');
+    expect(card).toMatch(/<textarea[^>]*name="proxyProtocolRanges"[^>]*><\/textarea>/);
+    expect(card).toContain('send a PROXY header (v1 or v2) to ports 80 and 443');
+  });
+
+  it('shows the stored PROXY protocol sources one per line', () => {
+    const html = render({ trustedProxies: { ranges: [], proxy_protocol_ranges: ['192.168.1.1', '10.0.10.0/24'] } });
+    expect(html).toMatch(/<textarea[^>]*name="proxyProtocolRanges"[^>]*>\n?192\.168\.1\.1\n10\.0\.10\.0\/24<\/textarea>/);
+  });
+
+  it('locks the PROXY protocol sources on a replica that follows its master', () => {
+    const textarea = (html: string) => html.match(/<textarea[^>]*name="proxyProtocolRanges"[^>]*>/)?.[0] ?? '';
+    expect(textarea(render({ isSlave: true }))).toContain('disabled=""');
+    const overridden = render({
+      isSlave: true,
+      overrides: { defaultResponse: false, trustedProxies: true, upstreamDnsResolution: false, authentik: false, forwardAuth: false },
+    });
+    expect(textarea(overridden)).not.toContain('disabled=""');
+  });
 });
 
 describe('Geo blocking and Rate limiting pages', () => {

@@ -32,6 +32,7 @@ import {
 import { withSettingsUpdateLock } from "@/src/lib/settings-update-lock";
 import { ApiClientError } from "@/src/lib/api-errors";
 import { normalizeRateLimitSettings } from "@/src/lib/caddy-rate-limit";
+import { normalizeProxyProtocolRanges } from "@/src/lib/proxy-protocol";
 import { CaddyApplyError } from "@/src/lib/caddy-apply-error";
 import { logAuditEvent } from "@/src/lib/audit";
 import { parseRowId } from "@/src/lib/row-ids";
@@ -539,12 +540,17 @@ async function updateTrustedProxiesSettingsActionUnlocked(_prevState: ActionResu
     );
     const strict = formData.get("strict") === "on";
     const defaultGeoblock = formData.get("defaultGeoblock") === "on";
+    const proxyProtocol = normalizeProxyProtocolRanges(String(formData.get("proxyProtocolRanges") ?? ""));
+    if ("error" in proxyProtocol) {
+      return { success: false, message: `PROXY protocol sources: ${proxyProtocol.error}` };
+    }
 
     await saveTrustedProxiesSettings({
       ranges,
       client_ip_headers: clientIpHeaders.length > 0 ? clientIpHeaders : undefined,
       strict: strict || undefined,
       default_geoblock: defaultGeoblock || undefined,
+      proxy_protocol_ranges: proxyProtocol.values.length > 0 ? proxyProtocol.values : undefined,
     });
 
     try {

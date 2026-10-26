@@ -307,6 +307,21 @@ function TrustedProxiesCard({
               disabled={disabled}
             />
           </SettingRow>
+          <SettingRow
+            label="PROXY protocol from"
+            htmlFor="settings-proxy-protocol-ranges"
+            hint="TCP load balancers that send a PROXY header (v1 or v2) to ports 80 and 443. Addresses or CIDR ranges, one per line; other clients connect as before."
+          >
+            <Textarea
+              id="settings-proxy-protocol-ranges"
+              name="proxyProtocolRanges"
+              defaultValue={(trustedProxies?.proxy_protocol_ranges ?? []).join("\n")}
+              disabled={disabled}
+              rows={2}
+              placeholder={"192.168.1.1\n10.0.10.0/24"}
+              className="num min-h-0"
+            />
+          </SettingRow>
         </SettingRows>
       </SettingsForm>
     </SectionCard>

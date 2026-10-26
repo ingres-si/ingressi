@@ -85,7 +85,7 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     id: "trusted-proxies",
     name: "Trusted proxies",
     desc: "The real client address behind a load balancer or CDN",
-    keywords: ["proxy", "cloudflare", "real ip", "x-forwarded-for", "client ip", "cidr", "strict", "private_ranges"],
+    keywords: ["proxy", "cloudflare", "real ip", "x-forwarded-for", "client ip", "cidr", "strict", "private_ranges", "proxy protocol", "load balancer", "haproxy"],
     page: "Host defaults",
     href: "/proxy-hosts/defaults#trusted-proxies",
   },

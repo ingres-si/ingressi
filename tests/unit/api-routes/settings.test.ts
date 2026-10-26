@@ -117,7 +117,7 @@ import { getInstanceMode, setInstanceMode, getSlaveMasterToken, setSlaveMasterTo
 import { applyCaddyConfig } from '@/src/lib/caddy';
 import { requireApiAdmin } from '@/src/lib/api-auth';
 import { DefaultResponseValidationError } from '@/src/lib/caddy-default-response';
-import { updateGeneralSettingsAction, updateRateLimitSettingsAction } from '@/app/(dashboard)/settings/actions';
+import { updateGeneralSettingsAction, updateRateLimitSettingsAction, updateTrustedProxiesSettingsAction } from '@/app/(dashboard)/settings/actions';
 import { saveRateLimitSettings } from '@/src/lib/settings';
 import { logAuditEvent } from '@/src/lib/audit';
 import { CaddyApplyError } from '@/src/lib/caddy-apply-error';
@@ -992,6 +992,112 @@ describe('PUT trusted-proxies settings', () => {
     expect(data).toEqual({ ok: true });
     expect(mockSaveTrustedProxies).toHaveBeenCalledWith(body);
     expect(mockApplyCaddyConfig).toHaveBeenCalled();
+  });
+});
+
+describe('PUT trusted-proxies settings: PROXY protocol sources', () => {
+  const put = (body: unknown) =>
+    PUT(createMockRequest({ method: 'PUT', body }), { params: Promise.resolve({ group: 'trusted-proxies' }) });
+
+  it('stores the sources normalized and applies Caddy', async () => {
+    mockSaveTrustedProxies.mockResolvedValue(undefined);
+    const response = await put({ ranges: [], proxy_protocol_ranges: ['192.168.1.1/24', ' 10.0.0.5 ', '10.0.0.5', '2001:db8::1'] });
+    expect(response.status).toBe(200);
+    expect(mockSaveTrustedProxies).toHaveBeenCalledWith({ ranges: [], proxy_protocol_ranges: ['192.168.1.0/24', '10.0.0.5', '2001:db8::1'] });
+    expect(mockApplyCaddyConfig).toHaveBeenCalled();
+  });
+
+  it('refuses a source that matches every address, without saving or applying', async () => {
+    for (const all of ['0.0.0.0/0', '::/0']) {
+      const response = await put({ ranges: [], proxy_protocol_ranges: ['192.168.1.1', all] });
+      expect(response.status).toBe(400);
+      expect((await response.json()).error).toMatch(/proxy_protocol_ranges: .* matches every address/);
+    }
+    expect(mockSaveTrustedProxies).not.toHaveBeenCalled();
+    expect(mockApplyCaddyConfig).not.toHaveBeenCalled();
+  });
+
+  it('refuses private_ranges, names and non-lists', async () => {
+    for (const value of [['private_ranges'], ['firewall.lan'], '192.168.1.1', [7]]) {
+      const response = await put({ ranges: [], proxy_protocol_ranges: value });
+      expect(response.status, JSON.stringify(value)).toBe(400);
+      expect((await response.json()).error).toContain('trusted-proxies.proxy_protocol_ranges');
+    }
+    expect(mockSaveTrustedProxies).not.toHaveBeenCalled();
+  });
+
+  it('rolls the sources back when Caddy rejects the configuration', async () => {
+    const previous = { ranges: ['10.0.0.0/8'] };
+    mockGetSetting.mockResolvedValueOnce(previous);
+    mockSaveTrustedProxies.mockResolvedValue(undefined);
+    mockApplyCaddyConfig.mockRejectedValueOnce(new Error('Caddy rejected configuration'));
+    const response = await put({ ranges: [], proxy_protocol_ranges: ['192.168.1.1'] });
+    expect(response.status).toBe(502);
+    expect(mockSetSetting).toHaveBeenCalledWith('trusted_proxies', previous);
+  });
+
+  it('returns the stored sources', async () => {
+    const settings = { ranges: [], proxy_protocol_ranges: ['192.168.1.1', '10.0.10.0/24'] };
+    mockGetTrustedProxies.mockResolvedValue(settings as any);
+    const response = await GET(createMockRequest(), { params: Promise.resolve({ group: 'trusted-proxies' }) });
+    expect(await response.json()).toEqual(settings);
+  });
+});
+
+describe('updateTrustedProxiesSettingsAction (dashboard form)', () => {
+  const form = (fields: Record<string, string>) => {
+    const formData = new FormData();
+    for (const [key, value] of Object.entries(fields)) formData.set(key, value);
+    return formData;
+  };
+
+  it('saves the PROXY protocol sources from the text area, normalized', async () => {
+    const result = await updateTrustedProxiesSettingsAction(null, form({
+      ranges: '', clientIpHeaders: '', proxyProtocolRanges: '192.168.1.1\n10.0.10.7/24, 192.168.1.1\n\n2001:db8::1',
+    }));
+    expect(result).toMatchObject({ success: true });
+    expect(mockSaveTrustedProxies).toHaveBeenCalledWith({
+      ranges: [],
+      client_ip_headers: undefined,
+      strict: undefined,
+      default_geoblock: undefined,
+      proxy_protocol_ranges: ['192.168.1.1', '10.0.10.0/24', '2001:db8::1'],
+    });
+    expect(mockApplyCaddyConfig).toHaveBeenCalled();
+  });
+
+  it('keeps the other fields as they were saved before', async () => {
+    await updateTrustedProxiesSettingsAction(null, form({
+      ranges: 'private_ranges', clientIpHeaders: 'Cf-Connecting-Ip', strict: 'on', defaultGeoblock: 'on', proxyProtocolRanges: '172.21.0.1',
+    }));
+    expect(mockSaveTrustedProxies).toHaveBeenCalledWith({
+      ranges: ['private_ranges'],
+      client_ip_headers: ['Cf-Connecting-Ip'],
+      strict: true,
+      default_geoblock: true,
+      proxy_protocol_ranges: ['172.21.0.1'],
+    });
+  });
+
+  it('leaves the sources out when the text area is empty or missing', async () => {
+    await updateTrustedProxiesSettingsAction(null, form({ ranges: '10.0.0.0/8', proxyProtocolRanges: '  \n ' }));
+    expect(mockSaveTrustedProxies).toHaveBeenLastCalledWith(expect.objectContaining({ proxy_protocol_ranges: undefined }));
+    await updateTrustedProxiesSettingsAction(null, form({ ranges: '10.0.0.0/8' }));
+    expect(mockSaveTrustedProxies).toHaveBeenLastCalledWith(expect.objectContaining({ proxy_protocol_ranges: undefined }));
+  });
+
+  it('reports a bad source by name and saves nothing', async () => {
+    for (const [text, message] of [
+      ['192.168.1.1\n0.0.0.0/0', /PROXY protocol sources: "0\.0\.0\.0\/0" matches every address/],
+      ['private_ranges', /PROXY protocol sources: "private_ranges" is not accepted here/],
+      ['firewall.lan', /PROXY protocol sources: "firewall\.lan" is not an IP address or a CIDR range/],
+    ] as const) {
+      const result = await updateTrustedProxiesSettingsAction(null, form({ ranges: '', proxyProtocolRanges: text }));
+      expect(result.success).toBe(false);
+      expect(result.message).toMatch(message);
+    }
+    expect(mockSaveTrustedProxies).not.toHaveBeenCalled();
+    expect(mockApplyCaddyConfig).not.toHaveBeenCalled();
   });
 });
 

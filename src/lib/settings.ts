@@ -75,6 +75,10 @@ export type TrustedProxiesSettings = {
   // When true, use `ranges` as the default trusted-proxy list for global
   // geoblocking so the two settings can't silently disagree.
   default_geoblock?: boolean;
+  // Load balancers allowed to send a PROXY protocol header on ports 80 and
+  // 443 (Caddy's `proxy_protocol` listener wrapper; src/lib/proxy-protocol.ts).
+  // IPs and CIDRs, no private_ranges. Empty = no PROXY protocol.
+  proxy_protocol_ranges?: string[];
 };
 
 export type DnsSettings = {

@@ -3,6 +3,7 @@ import { bodyLimitRangeMessage, customDirectivesError, isValidBodyLimit } from "
 import { normalizeDefaultResponseSettings } from "./caddy-default-response";
 import { getProviderDefinition, isValidDnsDuration } from "./dns-providers";
 import { normalizeRateLimitSettings } from "./caddy-rate-limit";
+import { normalizeProxyProtocolRanges } from "./proxy-protocol";
 import { ApiValidationError } from "./api-errors";
 import { WAF_TUNING_KEYS, wafTuningError } from "./waf-tuning";
 
@@ -222,8 +223,9 @@ function validateLogging(value: Record<string, unknown>): void {
   }
 }
 
-function validateTrustedProxies(value: Record<string, unknown>): void {
-  onlyKeys(value, ["ranges", "client_ip_headers", "strict", "default_geoblock"], "trusted proxy settings");
+/** Returns the settings to store: the PROXY protocol sources normalized, the rest as given. */
+function validateTrustedProxies(value: Record<string, unknown>): Record<string, unknown> {
+  onlyKeys(value, ["ranges", "client_ip_headers", "strict", "default_geoblock", "proxy_protocol_ranges"], "trusted proxy settings");
   stringList(required(value, "ranges", "trusted proxy settings"), "trusted-proxies.ranges", (item, label) => ipOrCidr(item, label, true));
   if (value.client_ip_headers !== undefined) {
     stringList(value.client_ip_headers, "trusted-proxies.client_ip_headers", (item, label) => {
@@ -232,6 +234,11 @@ function validateTrustedProxies(value: Record<string, unknown>): void {
   }
   optionalBoolean(value, "strict", "trusted-proxies");
   optionalBoolean(value, "default_geoblock", "trusted-proxies");
+  if (value.proxy_protocol_ranges === undefined) return value;
+  if (!Array.isArray(value.proxy_protocol_ranges)) invalid("trusted-proxies.proxy_protocol_ranges must be an array");
+  const proxyProtocol = normalizeProxyProtocolRanges(value.proxy_protocol_ranges);
+  if ("error" in proxyProtocol) invalid(`trusted-proxies.proxy_protocol_ranges: ${proxyProtocol.error}`);
+  return { ...value, proxy_protocol_ranges: proxyProtocol.values };
 }
 
 function validateDns(value: Record<string, unknown>): void {
@@ -454,7 +461,7 @@ export function validateSettingsGroup(
     case "forward-auth": validateForwardAuth(value); break;
     case "metrics": validateMetrics(value); break;
     case "logging": validateLogging(value); break;
-    case "trusted-proxies": validateTrustedProxies(value); break;
+    case "trusted-proxies": return validateTrustedProxies(value);
     case "dns": validateDns(value); break;
     case "dns-provider": validateDnsProvider(value); break;
     case "upstream-dns": validateUpstreamDns(value); break;

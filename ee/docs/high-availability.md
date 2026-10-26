@@ -33,7 +33,7 @@ Caddy instances that use the same storage form a cluster. They lock per certific
 
 - **N nodes.** Each runs Caddy and its own web container. One web container is the master: the dashboard where you make changes. The others run with `INSTANCE_MODE=slave` and receive the configuration through instance sync, which applies it to their own Caddy.
 - **One shared Redis or Valkey.** Every Caddy uses it for certificates. The setting is synced, so the slaves use the master's.
-- **A load balancer** in front, passing TCP 80 and 443 through to every node (TLS ends on Caddy). Port 80 can go to any node: the HTTP-01 tokens are shared.
+- **A load balancer** in front, passing TCP 80 and 443 through to every node (TLS ends on Caddy). Port 80 can go to any node: the HTTP-01 tokens are shared. Caddy sees the balancer as the client unless it keeps the client's address: have it send the PROXY protocol (`send-proxy-v2` in HAProxy) and list its addresses under **Host defaults → Trusted proxies → PROXY protocol from** ([settings.md](../../documentation/settings.md#details)), or access lists, rate limits and analytics all see one address.
 - Keep each Caddy's admin API (port 2019) on a network only its own web container shares. The default compose file does not publish it.
 
 ## What survives which failure

@@ -861,6 +861,7 @@ const spec = {
                 "waf",
                 "error-pages",
                 "default-response",
+                "trusted-proxies",
                 "rate-limit",
                 "instance-mode",
                 "sync-token",
@@ -887,6 +888,7 @@ const spec = {
                     { $ref: "#/components/schemas/GeoBlockConfig" },
                     { $ref: "#/components/schemas/WafSettings" },
                     { $ref: "#/components/schemas/DefaultResponseSettings" },
+                    { $ref: "#/components/schemas/TrustedProxiesSettings" },
                     { $ref: "#/components/schemas/RateLimitSettings" },
                   ],
                 },
@@ -921,6 +923,7 @@ const spec = {
                 "waf",
                 "error-pages",
                 "default-response",
+                "trusted-proxies",
                 "rate-limit",
                 "instance-mode",
                 "sync-token",
@@ -946,6 +949,7 @@ const spec = {
                   { $ref: "#/components/schemas/GeoBlockConfig" },
                   { $ref: "#/components/schemas/WafSettings" },
                   { $ref: "#/components/schemas/DefaultResponseSettings" },
+                  { $ref: "#/components/schemas/TrustedProxiesSettings" },
                   { $ref: "#/components/schemas/RateLimitSettings" },
                 ],
               },
@@ -4043,6 +4047,37 @@ const spec = {
           redirectUrl: { type: "string", description: "Target used by redirect mode." },
         },
         required: ["mode"],
+      },
+      TrustedProxiesSettings: {
+        type: "object",
+        description: "How Caddy works out the client address behind load balancers and CDNs (Host defaults → Trusted proxies).",
+        properties: {
+          ranges: {
+            type: "array",
+            items: { type: "string" },
+            example: ["private_ranges", "172.21.0.1/32"],
+            description: "Proxies whose client address headers are trusted: IPs, CIDR ranges or private_ranges. Empty turns it off.",
+          },
+          client_ip_headers: {
+            type: "array",
+            items: { type: "string" },
+            example: ["Cf-Connecting-Ip"],
+            description: "Headers holding the client address; empty means X-Forwarded-For.",
+          },
+          strict: { type: "boolean", description: "Read the client address headers from the right, as the trusted proxy added them." },
+          default_geoblock: { type: "boolean", description: "Use `ranges` as geo blocking's trusted proxies unless geo blocking lists its own." },
+          proxy_protocol_ranges: {
+            type: "array",
+            items: { type: "string" },
+            maxItems: 100,
+            example: ["192.168.1.1", "10.0.10.0/24"],
+            description:
+              "TCP load balancers allowed to send a PROXY protocol header (v1 or v2) to ports 80 and 443: IPs or CIDR ranges, " +
+              "stored as network addresses. From them the header is optional; from any other client a header is ignored. " +
+              "private_ranges and ranges matching every address are refused. Empty or absent: no PROXY protocol.",
+          },
+        },
+        required: ["ranges"],
       },
       DnsSettings: {
         type: "object",

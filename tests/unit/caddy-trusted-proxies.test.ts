@@ -32,7 +32,7 @@ vi.mock('../../src/lib/audit', () => ({ logAuditEvent: vi.fn() }));
 // caddy directly, otherwise createProxyHost's applyCaddyConfig can resolve to
 // the un-stubbed module and try to reach a live Caddy admin API.
 import { createProxyHost } from '../../src/lib/models/proxy-hosts';
-import { saveTrustedProxiesSettings, saveGeoBlockSettings, type GeoBlockSettings } from '../../src/lib/settings';
+import { saveTrustedProxiesSettings, saveGeoBlockSettings, saveMetricsSettings, type GeoBlockSettings } from '../../src/lib/settings';
 import { buildServerTrustedProxies, buildBlockerHandler, resolveEffectiveGeoBlock, buildCaddyDocument } from '../../src/lib/caddy';
 import * as schema from '../../src/lib/db/schema';
 
@@ -166,6 +166,60 @@ describe('buildCaddyDocument server-level trusted proxies', () => {
     const doc = await buildCaddyDocument();
     const blocker = findBlocker(doc);
     expect(blocker?.trusted_proxies).toEqual(['172.21.0.1/32']);
+  });
+
+  it('does not emit listener_wrappers by default, or with only X-Forwarded-For ranges', async () => {
+    expect(cpmServer(await buildCaddyDocument()).listener_wrappers).toBeUndefined();
+    await saveTrustedProxiesSettings({ ranges: ['private_ranges'], strict: true });
+    expect(cpmServer(await buildCaddyDocument()).listener_wrappers).toBeUndefined();
+    await saveTrustedProxiesSettings({ ranges: [], proxy_protocol_ranges: [] });
+    expect(cpmServer(await buildCaddyDocument()).listener_wrappers).toBeUndefined();
+  });
+
+  it('reads the PROXY header from the listed load balancers on servers.ingressi, before TLS', async () => {
+    await saveTrustedProxiesSettings({ ranges: [], proxy_protocol_ranges: ['192.168.1.1', '10.0.10.0/24', '2001:db8::7'] });
+
+    const server = cpmServer(await buildCaddyDocument());
+    expect(server.listen).toEqual([':80', ':443']);
+    expect(server.listener_wrappers).toEqual([
+      { wrapper: 'proxy_protocol', allow: ['192.168.1.1/32', '10.0.10.0/24', '2001:db8::7/128'], fallback_policy: 'ignore' },
+      { wrapper: 'tls' },
+    ]);
+    // X-Forwarded-For trust stays off: the two settings are independent.
+    expect(server.trusted_proxies).toBeUndefined();
+  });
+
+  it('emits PROXY protocol alongside trusted proxies, strict mode and custom headers', async () => {
+    await saveTrustedProxiesSettings({
+      ranges: ['172.21.0.1/32'],
+      client_ip_headers: ['Cf-Connecting-Ip'],
+      strict: true,
+      proxy_protocol_ranges: ['172.21.0.1'],
+    });
+
+    const server = cpmServer(await buildCaddyDocument());
+    expect(server.trusted_proxies).toEqual({ source: 'static', ranges: ['172.21.0.1/32'] });
+    expect(server.client_ip_headers).toEqual(['Cf-Connecting-Ip']);
+    expect(server.trusted_proxies_strict).toBe(1);
+    expect((server.listener_wrappers as Array<Record<string, unknown>>)[0].allow).toEqual(['172.21.0.1/32']);
+  });
+
+  it('drops stored entries that would widen the list (a replica receives what its master stored)', async () => {
+    await saveTrustedProxiesSettings({ ranges: [], proxy_protocol_ranges: ['0.0.0.0/0', 'private_ranges', 'not-an-address', '198.51.100.4'] });
+    const wrappers = cpmServer(await buildCaddyDocument()).listener_wrappers as Array<Record<string, unknown>>;
+    expect(wrappers[0].allow).toEqual(['198.51.100.4/32']);
+
+    await saveTrustedProxiesSettings({ ranges: [], proxy_protocol_ranges: ['::/0', 'nope'] });
+    expect(cpmServer(await buildCaddyDocument()).listener_wrappers).toBeUndefined();
+  });
+
+  it('leaves the metrics server alone', async () => {
+    await saveMetricsSettings({ enabled: true, port: 9090 });
+    await saveTrustedProxiesSettings({ ranges: [], proxy_protocol_ranges: ['192.168.1.1'] });
+    const doc = (await buildCaddyDocument()) as { apps: { http: { servers: Record<string, Record<string, unknown>> } } };
+    expect(doc.apps.http.servers.metrics).toBeDefined();
+    expect(doc.apps.http.servers.metrics.listener_wrappers).toBeUndefined();
+    expect(doc.apps.http.servers.ingressi.listener_wrappers).toBeDefined();
   });
 
   it('does not override an explicitly-set geoblock trusted_proxies list', async () => {
