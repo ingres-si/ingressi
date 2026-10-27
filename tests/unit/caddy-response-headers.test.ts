@@ -103,6 +103,14 @@ describe("response headers validation and route builder", () => {
     expect(() => normalizeResponseHeadersSettings({ set: {}, other: true })).toThrow(/unknown field/);
   });
 
+  it("refuses placeholders that copy request headers or cookies", () => {
+    for (const value of ["{http.request.header.Cookie}", "x {HTTP.Request.Cookie.session}", "{http.request.headers.Authorization}"]) {
+      expect(() => normalizeResponseHeadersSettings({ set: { "X-Echo": value } })).toThrow(/request headers or cookies/);
+    }
+    expect(normalizeResponseHeadersSettings({ set: { "X-Host": "{http.request.host}{http.request.uri}" } }).set["X-Host"])
+      .toBe("{http.request.host}{http.request.uri}");
+  });
+
   it("rejects a header listed twice, or both set and removed", () => {
     expect(() => normalizeResponseHeadersSettings({ remove: ["Server", "server"] })).toThrow(/more than once/);
     expect(() => normalizeResponseHeadersSettings({ set: { Server: "web" }, remove: ["SERVER"] })).toThrow(/more than once/);

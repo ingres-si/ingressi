@@ -4061,7 +4061,7 @@ const spec = {
             type: "object",
             additionalProperties: { type: "string" },
             example: { Server: "web" },
-            description: "Headers set on every response, replacing any value already there. Request placeholders such as {http.request.host} are filled in.",
+            description: "Headers set on every response, replacing any value already there. Request placeholders such as {http.request.host} are filled in; request header and cookie placeholders are refused.",
           },
           remove: {
             type: "array",

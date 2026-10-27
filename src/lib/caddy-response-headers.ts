@@ -30,6 +30,13 @@ const PROTECTED_HEADERS = new Set([
   "upgrade",
 ]);
 
+/**
+ * Placeholders that copy what the client sent: a request cookie or header
+ * (Cookie, Authorization) put in a response header is readable by any page
+ * script of every host, which defeats HttpOnly session cookies.
+ */
+const REQUEST_DATA_PLACEHOLDER = /\{http\.request\.(?:header|cookie)s?\./i;
+
 export class ResponseHeadersValidationError extends Error {
   constructor(message: string) {
     super(message);
@@ -91,6 +98,9 @@ export function normalizeResponseHeadersSettings(value: unknown): ResponseHeader
     if (typeof rawValue !== "string" || hasForbiddenControlCharacter(rawValue) || rawValue.length > MAX_VALUE_LENGTH) {
       invalid(`Invalid value for response header: ${name}`);
     }
+    if (REQUEST_DATA_PLACEHOLDER.test(rawValue)) {
+      invalid(`Response header ${name} cannot copy request headers or cookies`);
+    }
     set[name] = rawValue.trim();
   }
   const remove = rawRemove.map((rawName) => headerName(rawName, seen));
@@ -116,7 +126,8 @@ export function readStoredResponseHeadersSettings(value: unknown): ResponseHeade
  * and the upstream's and the host's own headers, which the values here
  * replace.
  *
- * Request placeholders ({http.*}) in values are expanded; host placeholders
+ * Request placeholders ({http.*}) in values are expanded (request headers and
+ * cookies are refused when saved); host placeholders
  * ({env.*}, {system.*}, {file.*}) are escaped and sent literally.
  */
 export function buildResponseHeadersRoute(
