@@ -5,6 +5,7 @@ import {
   getDefaultResponseSettings,
   getErrorPagesSettings,
   getForwardAuthSettings,
+  getResponseHeadersSettings,
   getTrustedProxiesSettings,
   getUpstreamDnsResolutionSettings,
 } from "@/src/lib/settings";
@@ -15,15 +16,17 @@ export const metadata = { title: "Host defaults" };
 
 export default async function HostDefaultsPage() {
   const { access } = await requirePermission("settings:read");
-  const [defaultResponse, errorPages, trustedProxies, upstreamDnsResolution, authentik, forwardAuth, replica] = await Promise.all([
+  const [defaultResponse, errorPages, responseHeaders, trustedProxies, upstreamDnsResolution, authentik, forwardAuth, replica] = await Promise.all([
     getDefaultResponseSettings(),
     getErrorPagesSettings(),
+    getResponseHeadersSettings(),
     getTrustedProxiesSettings(),
     getUpstreamDnsResolutionSettings(),
     getAuthentikSettings(),
     getForwardAuthSettings(),
     loadReplicaOverrides({
       defaultResponse: "default_response",
+      responseHeaders: "response_headers",
       trustedProxies: "trusted_proxies",
       upstreamDnsResolution: "upstream_dns_resolution",
       authentik: "authentik",
@@ -35,6 +38,7 @@ export default async function HostDefaultsPage() {
     <HostDefaultsClient
       defaultResponse={defaultResponse}
       errorPages={errorPages}
+      responseHeaders={responseHeaders}
       trustedProxies={trustedProxies}
       upstreamDnsResolution={upstreamDnsResolution}
       authentik={authentik}

@@ -27,6 +27,8 @@ vi.mock('@/src/lib/settings', () => ({
   saveWafSettings: vi.fn(),
   getErrorPagesSettings: vi.fn(),
   saveErrorPagesSettings: vi.fn(),
+  getResponseHeadersSettings: vi.fn(),
+  saveResponseHeadersSettings: vi.fn(),
   getTrustedProxiesSettings: vi.fn(),
   saveTrustedProxiesSettings: vi.fn(),
   getDefaultResponseSettings: vi.fn(),

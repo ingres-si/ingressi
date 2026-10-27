@@ -11,6 +11,7 @@ import type {
   DefaultResponseSettings,
   ErrorPagesSettings,
   ForwardAuthSettings,
+  ResponseHeadersSettings,
   TrustedProxiesSettings,
   UpstreamDnsResolutionSettings,
 } from "@/lib/settings";
@@ -20,6 +21,7 @@ import {
   updateDefaultResponseSettingsAction,
   updateErrorPagesSettingsAction,
   updateForwardAuthSettingsAction,
+  updateResponseHeadersSettingsAction,
   updateTrustedProxiesSettingsAction,
   updateUpstreamDnsResolutionSettingsAction,
 } from "../../settings/actions";
@@ -29,6 +31,7 @@ import { ChoiceField, OverrideRow, SettingRow, SettingRows, SettingsForm, Settin
 export type HostDefaultsProps = {
   defaultResponse: DefaultResponseSettings | null;
   errorPages: ErrorPagesSettings | null;
+  responseHeaders: ResponseHeadersSettings | null;
   trustedProxies: TrustedProxiesSettings | null;
   upstreamDnsResolution: UpstreamDnsResolutionSettings | null;
   authentik: AuthentikSettings | null;
@@ -37,6 +40,7 @@ export type HostDefaultsProps = {
   /** On a replica: the settings it overrides instead of following its master. */
   overrides: {
     defaultResponse: boolean;
+    responseHeaders: boolean;
     trustedProxies: boolean;
     upstreamDnsResolution: boolean;
     authentik: boolean;
@@ -67,6 +71,7 @@ export default function HostDefaultsClient(props: HostDefaultsProps) {
             <ErrorPagesFields initialData={props.errorPages?.rules ?? []} />
           </SettingsForm>
         </SectionCard>
+        <ResponseHeadersCard responseHeaders={props.responseHeaders} isSlave={isSlave} override={overrides.responseHeaders} />
         <TrustedProxiesCard trustedProxies={props.trustedProxies} isSlave={isSlave} override={overrides.trustedProxies} />
         <UpstreamDnsCard upstreamDnsResolution={props.upstreamDnsResolution} isSlave={isSlave} override={overrides.upstreamDnsResolution} />
         <ForwardAuthCards
@@ -227,6 +232,70 @@ function DefaultResponseCard({
               />
             </SettingRow>
           )}
+        </SettingRows>
+      </SettingsForm>
+    </SectionCard>
+  );
+}
+
+// ─── Response headers ───────────────────────────────────────────────────────
+
+function ResponseHeadersCard({
+  responseHeaders,
+  isSlave,
+  override: initialOverride,
+}: {
+  responseHeaders: ResponseHeadersSettings | null;
+  isSlave: boolean;
+  override: boolean;
+}) {
+  const [override, setOverride] = useState(initialOverride);
+  const disabled = isSlave && !override;
+  return (
+    <SectionCard
+      id="response-headers"
+      className="scroll-mt-20 md:scroll-mt-4"
+      title="Response headers"
+      description="Set or removed on every response of every host, after the host's own headers."
+      descriptionPlacement="below"
+      headingLevel={2}
+      divided={false}
+    >
+      <SettingsForm action={updateResponseHeadersSettingsAction} order={6}>
+        <SettingRows>
+          {isSlave && <OverrideRow id="response-headers-override" checked={override} onCheckedChange={setOverride} />}
+          <SettingRow
+            label="Set"
+            htmlFor="settings-response-headers-set"
+            hint="Name: value, one per line. Replaces the value the upstream or Caddy sent."
+          >
+            <Textarea
+              id="settings-response-headers-set"
+              name="set"
+              defaultValue={Object.entries(responseHeaders?.set ?? {})
+                .map(([name, value]) => `${name}: ${value}`)
+                .join("\n")}
+              disabled={disabled}
+              rows={2}
+              placeholder={"Server: web\nX-Content-Type-Options: nosniff"}
+              className="num min-h-0"
+            />
+          </SettingRow>
+          <SettingRow
+            label="Remove"
+            htmlFor="settings-response-headers-remove"
+            hint="Header names, one per line. Server and Via hide Caddy's own headers."
+          >
+            <Textarea
+              id="settings-response-headers-remove"
+              name="remove"
+              defaultValue={(responseHeaders?.remove ?? []).join("\n")}
+              disabled={disabled}
+              rows={2}
+              placeholder={"Server\nVia"}
+              className="num min-h-0"
+            />
+          </SettingRow>
         </SettingRows>
       </SettingsForm>
     </SectionCard>

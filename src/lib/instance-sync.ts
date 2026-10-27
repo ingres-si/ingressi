@@ -90,6 +90,8 @@ export type SyncSettings = {
    * slave stores null then, so it limits by its hosts' own rules only.
    */
   rate_limit?: unknown | null;
+  /** Response headers for every response. Optional for older masters. */
+  response_headers?: unknown | null;
   /**
    * White-label branding with its logos (ee/white-label). Replicas serve the
    * forward-auth portal and sign-in pages too. Optional for older masters.
@@ -719,6 +721,7 @@ const SYNC_SETTING_ORDER = [
   "default_response",
   "forward_auth",
   "rate_limit",
+  "response_headers",
   "certificate_storage",
 ] as const;
 
@@ -759,6 +762,7 @@ async function readLiveSyncSource(): Promise<SyncSource> {
     default_response: await getSetting("default_response"),
     forward_auth: await getSetting("forward_auth"),
     rate_limit: await getSetting("rate_limit"),
+    response_headers: await getSetting("response_headers"),
     certificate_storage: await getSetting("certificate_storage"),
     white_label: await getSetting(WHITE_LABEL_SETTING_KEY),
   };
@@ -1642,6 +1646,7 @@ export async function applySyncPayload(received: SyncPayload): Promise<AppliedSy
     ["forward_auth", payload.settings.forward_auth ?? null],
     ["default_response", payload.settings.default_response ?? null],
     ["rate_limit", payload.settings.rate_limit ?? null],
+    ["response_headers", payload.settings.response_headers ?? null],
     ["certificate_storage", payload.settings.certificate_storage ?? null],
     [WHITE_LABEL_SETTING_KEY, payload.settings.white_label ?? null],
     // API monetization on replicas (validated with the payload).

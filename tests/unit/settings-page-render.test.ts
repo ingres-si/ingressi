@@ -35,6 +35,7 @@ vi.mock('../../app/(dashboard)/settings/actions', () => ({
   updateUpstreamDnsResolutionSettingsAction: vi.fn(),
   updateAuthentikSettingsAction: vi.fn(),
   updateErrorPagesSettingsAction: vi.fn(),
+  updateResponseHeadersSettingsAction: vi.fn(),
   updateForwardAuthSettingsAction: vi.fn(),
   updateGeoBlockSettingsAction: vi.fn(),
   updateRateLimitSettingsAction: vi.fn(),
@@ -225,12 +226,13 @@ describe('Host defaults page', () => {
     const props: HostDefaultsProps = {
       defaultResponse: null,
       errorPages: null,
+      responseHeaders: null,
       trustedProxies: null,
       upstreamDnsResolution: null,
       authentik: null,
       forwardAuth: null,
       isSlave: false,
-      overrides: { defaultResponse: false, trustedProxies: false, upstreamDnsResolution: false, authentik: false, forwardAuth: false },
+      overrides: { defaultResponse: false, responseHeaders: false, trustedProxies: false, upstreamDnsResolution: false, authentik: false, forwardAuth: false },
       canSave: true,
       canOpenProxyHosts: true,
       ...overrides,
@@ -238,10 +240,10 @@ describe('Host defaults page', () => {
     return decode(renderToStaticMarkup(createElement(HostDefaultsClient, props)));
   }
 
-  it('holds the answer for unknown hosts, error pages, trusted proxies, upstream DNS and forward auth, with one save bar', () => {
+  it('holds the answer for unknown hosts, error pages, response headers, trusted proxies, upstream DNS and forward auth, with one save bar', () => {
     const html = render();
     expect(html).toMatch(/<h1[^>]*>Host defaults/);
-    for (const id of ['default-response', 'error-pages', 'trusted-proxies', 'upstream-dns', 'forward-auth', 'authentik', 'generic-forward-auth']) {
+    for (const id of ['default-response', 'error-pages', 'response-headers', 'trusted-proxies', 'upstream-dns', 'forward-auth', 'authentik', 'generic-forward-auth']) {
       expect(html).toContain(`id="${id}"`);
     }
     for (const answer of ['Caddy default', 'Custom response', 'Redirect', 'Close the connection']) expect(html).toContain(answer);
@@ -264,12 +266,18 @@ describe('Host defaults page', () => {
     expect(html).toMatch(/<textarea[^>]*name="proxyProtocolRanges"[^>]*>\n?192\.168\.1\.1\n10\.0\.10\.0\/24<\/textarea>/);
   });
 
+  it('shows the stored response headers, set as name: value and removed one per line', () => {
+    const html = render({ responseHeaders: { set: { Server: 'web', 'X-Frame-Options': 'DENY' }, remove: ['Via', 'X-Powered-By'] } });
+    expect(html).toMatch(/<textarea[^>]*name="set"[^>]*>\n?Server: web\nX-Frame-Options: DENY<\/textarea>/);
+    expect(html).toMatch(/<textarea[^>]*name="remove"[^>]*>\n?Via\nX-Powered-By<\/textarea>/);
+  });
+
   it('locks the PROXY protocol sources on a replica that follows its master', () => {
     const textarea = (html: string) => html.match(/<textarea[^>]*name="proxyProtocolRanges"[^>]*>/)?.[0] ?? '';
     expect(textarea(render({ isSlave: true }))).toContain('disabled=""');
     const overridden = render({
       isSlave: true,
-      overrides: { defaultResponse: false, trustedProxies: true, upstreamDnsResolution: false, authentik: false, forwardAuth: false },
+      overrides: { defaultResponse: false, responseHeaders: false, trustedProxies: true, upstreamDnsResolution: false, authentik: false, forwardAuth: false },
     });
     expect(textarea(overridden)).not.toContain('disabled=""');
   });

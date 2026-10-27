@@ -3,6 +3,7 @@ import { bodyLimitRangeMessage, customDirectivesError, isValidBodyLimit } from "
 import { normalizeDefaultResponseSettings } from "./caddy-default-response";
 import { getProviderDefinition, isValidDnsDuration } from "./dns-providers";
 import { normalizeRateLimitSettings } from "./caddy-rate-limit";
+import { normalizeResponseHeadersSettings, ResponseHeadersValidationError } from "./caddy-response-headers";
 import { normalizeProxyProtocolRanges } from "./proxy-protocol";
 import { ApiValidationError } from "./api-errors";
 import { WAF_TUNING_KEYS, wafTuningError } from "./waf-tuning";
@@ -432,6 +433,15 @@ function validateDefaultResponse(value: Record<string, unknown>): void {
   normalizeDefaultResponseSettings(value);
 }
 
+function validateResponseHeaders(value: Record<string, unknown>): void {
+  try {
+    normalizeResponseHeadersSettings(value);
+  } catch (error) {
+    if (error instanceof ResponseHeadersValidationError) invalid(error.message);
+    throw error;
+  }
+}
+
 export function assertSettingsPayloadSize(input: unknown): void {
   let serialized: string;
   try {
@@ -470,6 +480,7 @@ export function validateSettingsGroup(
     case "error-pages": validateErrorPages(value); break;
     case "default-response": validateDefaultResponse(value); break;
     case "rate-limit": validateRateLimit(value); break;
+    case "response-headers": validateResponseHeaders(value); break;
     default: invalid("Unknown settings group");
   }
   return input;

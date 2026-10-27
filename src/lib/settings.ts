@@ -9,12 +9,18 @@ import {
   type DefaultResponseSettings,
 } from "./caddy-default-response";
 import { normalizeRateLimitSettings, readStoredRateLimitSettings } from "./caddy-rate-limit";
+import {
+  normalizeResponseHeadersSettings,
+  readStoredResponseHeadersSettings,
+  type ResponseHeadersSettings,
+} from "./caddy-response-headers";
 import type { RateLimitSettings } from "./rate-limit-rules";
 import { storedWafTuning, type WafTuningSettings } from "./waf-tuning";
 import { replaceWholeScopeExclusions, syncWafExclusionMirror } from "./models/waf-exclusion-mirror";
 
 export type { DefaultResponseSettings } from "./caddy-default-response";
 export type { RateLimitSettings } from "./rate-limit-rules";
+export type { ResponseHeadersSettings } from "./caddy-response-headers";
 
 export type SettingValue<T> = T | null;
 
@@ -510,6 +516,15 @@ export async function getDefaultResponseSettings(): Promise<DefaultResponseSetti
 
 export async function saveDefaultResponseSettings(value: DefaultResponseSettings): Promise<void> {
   await setSetting("default_response", normalizeDefaultResponseSettings(value));
+}
+
+// Response headers set or removed on every response (caddy-response-headers.ts).
+export async function getResponseHeadersSettings(): Promise<ResponseHeadersSettings | null> {
+  return readStoredResponseHeadersSettings(await getEffectiveSetting<unknown>("response_headers"));
+}
+
+export async function saveResponseHeadersSettings(value: ResponseHeadersSettings): Promise<void> {
+  await setSetting("response_headers", normalizeResponseHeadersSettings(value));
 }
 
 // Rate limiting defaults: rules that hosts inherit, merge or

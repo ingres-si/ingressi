@@ -861,6 +861,7 @@ const spec = {
                 "waf",
                 "error-pages",
                 "default-response",
+                "response-headers",
                 "trusted-proxies",
                 "rate-limit",
                 "instance-mode",
@@ -888,6 +889,7 @@ const spec = {
                     { $ref: "#/components/schemas/GeoBlockConfig" },
                     { $ref: "#/components/schemas/WafSettings" },
                     { $ref: "#/components/schemas/DefaultResponseSettings" },
+                    { $ref: "#/components/schemas/ResponseHeadersSettings" },
                     { $ref: "#/components/schemas/TrustedProxiesSettings" },
                     { $ref: "#/components/schemas/RateLimitSettings" },
                   ],
@@ -923,6 +925,7 @@ const spec = {
                 "waf",
                 "error-pages",
                 "default-response",
+                "response-headers",
                 "trusted-proxies",
                 "rate-limit",
                 "instance-mode",
@@ -949,6 +952,7 @@ const spec = {
                   { $ref: "#/components/schemas/GeoBlockConfig" },
                   { $ref: "#/components/schemas/WafSettings" },
                   { $ref: "#/components/schemas/DefaultResponseSettings" },
+                  { $ref: "#/components/schemas/ResponseHeadersSettings" },
                   { $ref: "#/components/schemas/TrustedProxiesSettings" },
                   { $ref: "#/components/schemas/RateLimitSettings" },
                 ],
@@ -4047,6 +4051,25 @@ const spec = {
           redirectUrl: { type: "string", description: "Target used by redirect mode." },
         },
         required: ["mode"],
+      },
+      ResponseHeadersSettings: {
+        type: "object",
+        description:
+          "Response headers set or removed on every response of every host (Host defaults → Response headers). Applied after the upstream's, Caddy's and the host's own headers.",
+        properties: {
+          set: {
+            type: "object",
+            additionalProperties: { type: "string" },
+            example: { Server: "web" },
+            description: "Headers set on every response, replacing any value already there. Request placeholders such as {http.request.host} are filled in.",
+          },
+          remove: {
+            type: "array",
+            items: { type: "string" },
+            example: ["Via"],
+            description: "Headers removed from every response. A name cannot be both set and removed.",
+          },
+        },
       },
       TrustedProxiesSettings: {
         type: "object",

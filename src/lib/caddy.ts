@@ -38,6 +38,7 @@ import {
   getGeoBlockSettings,
   getWafSettings,
   getErrorPagesSettings,
+  getResponseHeadersSettings,
   getDefaultResponseSettings,
   getTrustedProxiesSettings,
   getRateLimitSettings,
@@ -52,6 +53,7 @@ import {
   type RateLimitSettings
 } from "./settings";
 import { buildDefaultResponseRoute } from "./caddy-default-response";
+import { buildResponseHeadersRoute } from "./caddy-response-headers";
 import { buildProxyProtocolListenerWrappers } from "./proxy-protocol";
 import { isReservedL4Port } from "./l4-reserved-ports";
 import { buildDnsChallengeConfig, type DnsProviderCredentials } from "./dns-providers";
@@ -3098,6 +3100,7 @@ const CADDY_BUILD_SETTING_KEYS = [
   "default_response",
   "rate_limit",
   "error_pages",
+  "response_headers",
   "logging",
   "metrics",
   CERTIFICATE_STORAGE_SETTING_KEY,
@@ -3407,10 +3410,16 @@ async function buildCaddyDocumentFromDatabase() {
   // The global Blocked sources list runs before anything else, on every
   // request the server takes (it has no host matcher and is not terminal:
   // whoever it does not deny goes on to the routes below).
-  const mainRoutes =
+  const blockedSourcesRoutes =
     accessListConfig.blockedSourcesRoute && hostRoutesWithDefault.length > 0
       ? [accessListConfig.blockedSourcesRoute, ...hostRoutesWithDefault]
       : hostRoutesWithDefault;
+  // Response headers for every response wrap everything after them, the
+  // Blocked sources list's denials included, so they go first. They never
+  // start a server on their own.
+  const responseHeadersRoute = buildResponseHeadersRoute(await getResponseHeadersSettings());
+  const mainRoutes =
+    responseHeadersRoute && blockedSourcesRoutes.length > 0 ? [responseHeadersRoute, ...blockedSourcesRoutes] : blockedSourcesRoutes;
 
   // Server-level error routes (Caddy handle_errors): per-host rules first so they
   // take precedence, then global rules act as a fallback for any unmatched host/status.
@@ -3428,7 +3437,10 @@ async function buildCaddyDocumentFromDatabase() {
   const hasRateLimits = Object.keys(namedRoutes).length > 0;
   const allNamedRoutes = { ...namedRoutes, ...accessListConfig.namedRoutes };
   const hasNamedRoutes = Object.keys(allNamedRoutes).length > 0;
+  // Caddy runs the error routes with the original response writer, so the
+  // response headers route is needed there too.
   const errorRoutes: CaddyHttpRoute[] = [
+    ...(responseHeadersRoute && mainRoutes.length > 0 ? [responseHeadersRoute] : []),
     ...(hasRateLimits && loggingEnabled ? [buildRateLimitLogRoute()] : []),
     ...hostErrorRoutes,
     ...globalErrorRoutes,

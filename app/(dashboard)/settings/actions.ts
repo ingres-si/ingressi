@@ -16,7 +16,7 @@ import {
   resetSyncKeyPin,
   updateInstance,
 } from "@/src/lib/models/instances";
-import { clearSetting, getSetting, setSetting, saveCloudflareSettings, getDnsProviderSettings, saveDnsProviderSettings, saveGeneralSettings, saveAcmeSettings, saveAuthentikSettings, saveForwardAuthSettings, saveMetricsSettings, saveLoggingSettings, saveDnsSettings, saveUpstreamDnsResolutionSettings, saveGeoBlockSettings, saveWafSettings, getWafSettings, saveErrorPagesSettings, saveTrustedProxiesSettings, saveDefaultResponseSettings, saveRateLimitSettings, type DefaultResponseSettings } from "@/src/lib/settings";
+import { clearSetting, getSetting, setSetting, saveCloudflareSettings, getDnsProviderSettings, saveDnsProviderSettings, saveGeneralSettings, saveAcmeSettings, saveAuthentikSettings, saveForwardAuthSettings, saveMetricsSettings, saveLoggingSettings, saveDnsSettings, saveUpstreamDnsResolutionSettings, saveGeoBlockSettings, saveWafSettings, getWafSettings, saveErrorPagesSettings, saveTrustedProxiesSettings, saveDefaultResponseSettings, saveRateLimitSettings, saveResponseHeadersSettings, type DefaultResponseSettings } from "@/src/lib/settings";
 import { sanitizeErrorPageRules } from "@/src/lib/models/proxy-hosts";
 import { SUPPRESSED_FROM_EVENT_REASON, suppressWafRuleForHost } from "@/src/lib/waf-suppression";
 import { createWafExclusion, deleteWafExclusion, listWafExclusions } from "@/src/lib/models/waf-exclusions";
@@ -1461,6 +1461,56 @@ async function updateWafSettingsActionUnlocked(_prevState: ActionResult | null, 
   }
 }
 
+function headerNameLines(value: FormDataEntryValue | null): string[] {
+  if (typeof value !== "string") return [];
+  return value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+}
+
+async function updateResponseHeadersSettingsActionUnlocked(
+  _prevState: ActionResult | null,
+  formData: FormData
+): Promise<ActionResult> {
+  try {
+    await requirePermission("settings:write");
+    const mode = await getInstanceMode();
+    const overrideEnabled = formData.get("overrideEnabled") === "on";
+    if (mode === "slave" && !overrideEnabled) {
+      await clearSetting("response_headers");
+      try {
+        await applyCaddyConfig();
+        revalidateSettingsPages();
+        return { success: true, message: "Response headers reset to master settings" };
+      } catch (error) {
+        console.error("Failed to apply Caddy config:", error);
+        revalidateSettingsPages();
+        const errorMsg = error instanceof Error ? error.message : "Unknown error";
+        await syncInstances();
+        return { success: true, message: `Settings reset, but could not apply to Caddy: ${errorMsg}` };
+      }
+    }
+
+    await saveResponseHeadersSettings({
+      set: parseDefaultResponseHeaders(formData.get("set")) ?? {},
+      remove: headerNameLines(formData.get("remove")),
+    });
+
+    try {
+      await applyCaddyConfig();
+      revalidateSettingsPages();
+      return { success: true, message: "Response headers saved and applied successfully" };
+    } catch (error) {
+      console.error("Failed to apply Caddy config:", error);
+      revalidateSettingsPages();
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
+      await syncInstances();
+      return { success: true, message: `Settings saved, but could not apply to Caddy: ${errorMsg}` };
+    }
+  } catch (error) {
+    console.error("Failed to save response header settings:", error);
+    return { success: false, message: error instanceof Error ? error.message : "Failed to save response header settings" };
+  }
+}
+
 export const updateGeneralSettingsAction = serializedSettingsAction(updateGeneralSettingsActionUnlocked);
 export const updateAcmeSettingsAction = serializedSettingsAction(updateAcmeSettingsActionUnlocked);
 export const updateCloudflareSettingsAction = serializedSettingsAction(updateCloudflareSettingsActionUnlocked);
@@ -1477,6 +1527,7 @@ export const updateSlaveMasterTokenAction = serializedSettingsAction(updateSlave
 export const updateGeoBlockSettingsAction = serializedSettingsAction(updateGeoBlockSettingsActionUnlocked);
 export const updateErrorPagesSettingsAction = serializedSettingsAction(updateErrorPagesSettingsActionUnlocked);
 export const updateDefaultResponseSettingsAction = serializedSettingsAction(updateDefaultResponseSettingsActionUnlocked);
+export const updateResponseHeadersSettingsAction = serializedSettingsAction(updateResponseHeadersSettingsActionUnlocked);
 export const updateRateLimitSettingsAction = serializedSettingsAction(updateRateLimitSettingsActionUnlocked);
 export const removeWafRuleGloballyAction = serializedSettingsAction(removeWafRuleGloballyActionUnlocked);
 export const suppressWafRuleGloballyAction = serializedSettingsAction(suppressWafRuleGloballyActionUnlocked);

@@ -79,6 +79,7 @@ export const CONFIG_SETTING_KEYS = [
   "default_response",
   "trusted_proxies",
   "rate_limit",
+  "response_headers",
   "certificate_storage",
 ] as const;
 export type ConfigSettingKey = (typeof CONFIG_SETTING_KEYS)[number];
@@ -100,6 +101,7 @@ export const CONFIG_SETTING_LABELS: Record<ConfigSettingKey, string> = {
   default_response: "Default response",
   trusted_proxies: "Trusted proxies",
   rate_limit: "Rate limiting",
+  response_headers: "Response headers",
   certificate_storage: "Certificate storage",
 };
 

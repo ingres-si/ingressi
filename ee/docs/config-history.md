@@ -31,7 +31,7 @@ Included:
 | Issued client certificates | `issued_client_certificates` |
 | mTLS roles, role assignments, access rules | `mtls_roles`, `mtls_certificate_roles`, `mtls_access_rules` |
 | Forward-auth groups and per-host grants | `groups`, `forward_auth_access` |
-| Settings groups managed by `/api/v1/settings/{group}` | `settings` keys `general`, `acme`, `cloudflare`, `dns_provider`, `authentik`, `forward_auth`, `metrics`, `logging`, `dns`, `upstream_dns_resolution`, `geoblock`, `waf`, `error_pages`, `default_response`, `trusted_proxies` |
+| Settings groups managed by `/api/v1/settings/{group}` | `settings` keys `general`, `acme`, `cloudflare`, `dns_provider`, `authentik`, `forward_auth`, `metrics`, `logging`, `dns`, `upstream_dns_resolution`, `geoblock`, `waf`, `error_pages`, `default_response`, `response_headers`, `trusted_proxies` |
 | Certificate storage ([high-availability.md](high-availability.md)) | `settings` key `certificate_storage` |
 
 Excluded, so that a restore or an import can never lock anyone out or sign anyone in: users, group memberships, dashboard sessions, sign-in accounts, OAuth state and providers, API tokens, audit events, instances and sync tokens and keys, forward-auth sessions, the instance mode, the history settings and every other settings key.

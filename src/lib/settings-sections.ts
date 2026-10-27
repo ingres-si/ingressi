@@ -82,6 +82,14 @@ export const SETTINGS_SECTIONS: readonly SettingsSection[] = [
     href: "/proxy-hosts/defaults#error-pages",
   },
   {
+    id: "response-headers",
+    name: "Response headers",
+    desc: "Headers set or removed on every response",
+    keywords: ["header", "server", "via", "hide", "remove", "security headers", "x-powered-by"],
+    page: "Host defaults",
+    href: "/proxy-hosts/defaults#response-headers",
+  },
+  {
     id: "trusted-proxies",
     name: "Trusted proxies",
     desc: "The real client address behind a load balancer or CDN",

@@ -243,6 +243,7 @@ Every guard of a route, page or server action and the permission it checks. Rout
 | `app/(dashboard)/settings/actions.ts` | `updateGeoBlockSettingsActionUnlocked` | `settings:write` |
 | `app/(dashboard)/settings/actions.ts` | `updateErrorPagesSettingsActionUnlocked` | `settings:write` |
 | `app/(dashboard)/settings/actions.ts` | `updateRateLimitSettingsActionUnlocked` | `settings:write` |
+| `app/(dashboard)/settings/actions.ts` | `updateResponseHeadersSettingsActionUnlocked` | `settings:write` |
 | `app/(dashboard)/settings/actions.ts` | `updateDefaultResponseSettingsActionUnlocked` | `settings:write` |
 | `app/(dashboard)/settings/actions.ts` | `syncSlaveInstancesAction` | `instances:write` |
 | `app/(dashboard)/settings/actions.ts` | `lookupWafRuleMessageAction` | `waf:read` |
