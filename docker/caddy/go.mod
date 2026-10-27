@@ -15,7 +15,7 @@ require (
 	github.com/caddy-dns/hetzner v1.0.0
 	github.com/caddy-dns/infomaniak v1.0.2
 	github.com/caddy-dns/inwx v0.4.1
-	github.com/caddy-dns/ionos v1.2.0
+	github.com/caddy-dns/ionos v1.3.0
 	github.com/caddy-dns/linode v0.8.0
 	github.com/caddy-dns/namecheap v1.0.0
 	github.com/caddy-dns/netcup v1.0.0
@@ -141,7 +141,7 @@ require (
 	github.com/libdns/hetzner v1.0.0 // indirect
 	github.com/libdns/infomaniak v0.2.0 // indirect
 	github.com/libdns/inwx v0.3.1 // indirect
-	github.com/libdns/ionos v1.2.0 // indirect
+	github.com/libdns/ionos v1.3.0 // indirect
 	github.com/libdns/libdns v1.1.1 // indirect
 	github.com/libdns/linode v0.5.0 // indirect
 	github.com/libdns/namecheap v1.0.0 // indirect
