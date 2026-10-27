@@ -199,12 +199,22 @@ export function GeoBlockCard() {
   const set = (patch: Partial<GeoForm>) => update((f) => ({ ...f, geoblock: { ...f.geoblock, ...patch } }));
   const blockCount = geo.blockCountries.length + geo.blockContinents.length + geo.blockAsns.length + geo.blockCidrs.length + geo.blockIps.length;
   const allowCount = geo.allowCountries.length + geo.allowContinents.length + geo.allowAsns.length + geo.allowCidrs.length + geo.allowIps.length;
+  const globalOn = Boolean(data.geoblockGlobal?.enabled);
+  // Allow rules only make exceptions to block rules (the global ones too when merged).
+  const blocksNothing = allowCount > 0 && blockCount === 0 && (geo.mode === "override" || !globalOn);
+  const description = geo.enabled
+    ? "Allow rules win over block rules."
+    : !globalOn
+      ? undefined
+      : geo.mode === "override"
+        ? "Off for this host, and it overrides the global geo blocking rules, so none apply."
+        : "Off for this host: only the global geo blocking rules apply.";
   return (
     <EditorCard
       id="geo-blocking"
       title="Geo blocking"
       was="geoblock"
-      description={geo.enabled ? "Allow rules win over block rules." : data.geoblockGlobal?.enabled ? "Off for this host: only the global geo blocking rules apply." : undefined}
+      description={description}
       actions={
         <span className="flex items-center gap-2 text-[13px]">
           <span id="f-geo-enabled-label">Geo blocking for this host</span>
@@ -248,6 +258,11 @@ export function GeoBlockCard() {
             ]}
           />
           <RulesPanel kind={panel} geo={geo} set={set} />
+          {blocksNothing && (
+            <p className="m-0 text-xs text-warn">
+              Allow rules only make exceptions to block rules, so with no block rules nothing is blocked. To let only some countries in, block every continent and allow them.
+            </p>
+          )}
           <FieldError id="f-geo-ranges" />
           <div className="border-t border-line pt-3">
             <button

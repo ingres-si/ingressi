@@ -245,6 +245,22 @@ describe('host editor sections', () => {
     expect(html).toContain('own settings only');
   });
 
+  it('Security: geo blocking says which rules apply, and when allow rules alone block nothing', () => {
+    const host = data().host!;
+    const render = (geoblock: object, geoblockMode: 'merge' | 'override', globalOn = true) =>
+      inEditor(createElement(SecuritySection), data({ host: { ...host, geoblock: geoblock as never, geoblockMode }, geoblockGlobal: { enabled: globalOn } }));
+    expect(render({ enabled: false }, 'merge')).toContain('Off for this host: only the global geo blocking rules apply.');
+    expect(render({ enabled: false }, 'override')).toContain('overrides the global geo blocking rules, so none apply');
+    expect(render({ enabled: false }, 'override', false)).not.toContain('Off for this host');
+
+    const allowOnly = { enabled: true, allow_countries: ['AT'] };
+    expect(render(allowOnly, 'override')).toContain('with no block rules nothing is blocked');
+    expect(render(allowOnly, 'merge', false)).toContain('with no block rules nothing is blocked');
+    // Merged, the host's allow rules make exceptions to the global block rules.
+    expect(render(allowOnly, 'merge')).not.toContain('nothing is blocked');
+    expect(render({ ...allowOnly, block_continents: ['EU'] }, 'override')).not.toContain('nothing is blocked');
+  });
+
   it('Access: access list, geo blocking, sign-in, mTLS and blocked paths', () => {
     const html = inEditor(createElement(AccessSection));
     expect(html).toContain('<label for="f-access-list"');

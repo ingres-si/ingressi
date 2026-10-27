@@ -14,7 +14,15 @@ It also has a fail-closed mode, custom response codes and bodies, and trusted pr
 | CIDR | `203.0.113.0/24` | IP range in CIDR notation |
 | IP | `203.0.113.10` | Exact IP address |
 
-Rules can be **block** or **allow**. Allow rules win over block rules, so you can block a continent and allow specific IPs or ASNs through.
+Rules can be **block** or **allow**. Allow rules win over block rules, so you can block a continent and allow specific IPs or ASNs through. Allow rules only make exceptions to block rules: on their own they block nothing. To let only some countries in, block every continent and allow those countries.
+
+## Global and host rules
+
+A host's own rules either **merge with** the global rules (both apply) or **override** them (only the host's apply). Global rules apply only while **Use default rules** is on on the **Geo blocking** page: turned off, the rules stay saved but no host uses them, merged or not. A host whose geo blocking is off uses the global rules, unless it is set to override them, which leaves it without geo blocking.
+
+The Proxy Hosts list shows the geo blocking that applies to each host as a **Geo** pill, for example *Geo · blocks CN, RU*. Geo blocking with nothing to block (no rules, or allow rules only) shows none.
+
+With **Use these ranges for geo blocking too** (trusted proxies, [settings.md](settings.md)), the server's trusted proxy ranges are geo blocking's trusted proxies wherever its rules list none of their own: global, merged or a host's own.
 
 ## GeoIP setup
 

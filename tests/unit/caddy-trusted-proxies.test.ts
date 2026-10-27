@@ -230,6 +230,45 @@ describe('buildCaddyDocument server-level trusted proxies', () => {
     const blocker = findBlocker(doc);
     expect(blocker?.trusted_proxies).toEqual(['10.9.9.9/32']);
   });
+
+  it('defaults the trusted_proxies of a host with its own geoblock rules and no global ones', async () => {
+    await saveTrustedProxiesSettings({ ranges: ['172.21.0.1/32'], default_geoblock: true });
+    await createProxyHost(
+      { name: 'geo', domains: ['geo.example.com'], upstreams: ['10.0.0.6:8080'], geoblock: baseGeoBlock, geoblockMode: 'merge' },
+      1
+    );
+
+    const blocker = findBlocker(await buildCaddyDocument());
+    expect(blocker?.block_countries).toEqual(['CN']);
+    expect(blocker?.trusted_proxies).toEqual(['172.21.0.1/32']);
+  });
+
+  it('defaults the trusted_proxies of a host whose geoblock rules override the global ones', async () => {
+    await saveTrustedProxiesSettings({ ranges: ['172.21.0.1/32'], default_geoblock: true });
+    await saveGeoBlockSettings({ ...baseGeoBlock, block_countries: ['RU'], trusted_proxies: ['10.9.9.9/32'] });
+    await ctx.db.delete(schema.proxyHosts);
+    await createProxyHost(
+      { name: 'geo', domains: ['geo.example.com'], upstreams: ['10.0.0.6:8080'], geoblock: baseGeoBlock, geoblockMode: 'override' },
+      1
+    );
+
+    const blocker = findBlocker(await buildCaddyDocument());
+    expect(blocker?.block_countries).toEqual(['CN']);
+    expect(blocker?.trusted_proxies).toEqual(['172.21.0.1/32']);
+  });
+
+  it('does not merge the rules of a disabled global geoblock into a host that merges with it', async () => {
+    await saveGeoBlockSettings({ ...baseGeoBlock, enabled: false, block_countries: ['RU'], block_cidrs: ['0.0.0.0/0'] });
+    await ctx.db.delete(schema.proxyHosts);
+    await createProxyHost(
+      { name: 'geo', domains: ['geo.example.com'], upstreams: ['10.0.0.6:8080'], geoblock: baseGeoBlock, geoblockMode: 'merge' },
+      1
+    );
+
+    const blocker = findBlocker(await buildCaddyDocument());
+    expect(blocker?.block_countries).toEqual(['CN']);
+    expect(blocker?.block_cidrs).toBeUndefined();
+  });
 });
 
 /** Find the first geoip blocker handler anywhere in the config document. */

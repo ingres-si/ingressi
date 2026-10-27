@@ -676,7 +676,7 @@ export function GeoBlockFields({ initialValues, showModeSelector = true }: GeoBl
           </TabsContent>
           <TabsContent value="allow" forceMount className="mt-4 data-[state=inactive]:hidden">
             <p className="text-xs text-muted-foreground mb-3">
-              Allow rules take precedence over block rules.
+              Allow rules take precedence over block rules. They only make exceptions to them: on their own they block nothing.
             </p>
             <RulesPanel prefix="allow" initial={initial} resetKey={resetKey} />
           </TabsContent>
