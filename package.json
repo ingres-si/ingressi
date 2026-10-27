@@ -33,7 +33,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.1.0",
-    "@better-auth/passkey": "1.7.12",
+    "@better-auth/passkey": "1.7.13",
     "@clickhouse/client": "^1.24.1",
     "@coinbase/x402": "2.1.0",
     "@node-saml/node-saml": "5.1.0",
