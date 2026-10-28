@@ -268,6 +268,43 @@ describe('protection coverage', () => {
     expect(document.notes.join(' ')).toContain('ClickHouse analytics is not configured');
   });
 
+  it('counts geo blocking only where something is blocked, leaving a disabled global config out of merged hosts', async () => {
+    const geo = (patch: Record<string, unknown>) => ({
+      enabled: true, block_countries: [], block_continents: [], block_asns: [], block_cidrs: [], block_ips: [],
+      allow_countries: [], allow_continents: [], allow_asns: [], allow_cidrs: [], allow_ips: [],
+      trusted_proxies: [], fail_closed: false, response_status: 403, response_body: 'Forbidden', response_headers: {}, redirect_url: '',
+      ...patch,
+    });
+    const setHostGeo = async (id: number, geoblock: object, mode: 'merge' | 'override') => {
+      const [row] = await ctx.db.select().from(schema.proxyHosts).where(eq(schema.proxyHosts.id, id));
+      const meta = { ...JSON.parse(row.meta as string), geoblock, geoblock_mode: mode };
+      await ctx.db.update(schema.proxyHosts).set({ meta: JSON.stringify(meta) }).where(eq(schema.proxyHosts.id, id));
+    };
+    const geoOf = (document: ComplianceReportDocument, name: string) => {
+      const { geoBlocking, geoBlockingSource } = rowOf(sectionOf(document, 'proxy_hosts'), 'name', name);
+      return { geoBlocking, geoBlockingSource };
+    };
+    // Admin panel: allow rules alone (override). App: its own block rules, merged. Legacy: no geo blocking of its own.
+    await setHostGeo(seed.hostAuthId, geo({ allow_countries: ['AT'] }), 'override');
+    await setHostGeo(seed.hostWafId, geo({ block_countries: ['CN'] }), 'merge');
+
+    // The global rules are saved but turned off: no host uses them.
+    await ctx.db.insert(schema.settings).values({ key: 'geoblock', value: JSON.stringify(geo({ enabled: false, block_countries: ['RU'] })), updatedAt: NOW.toISOString() });
+    let document = await build('protection_coverage');
+    expect(geoOf(document, 'Admin panel')).toEqual({ geoBlocking: false, geoBlockingSource: 'no block rules' });
+    expect(geoOf(document, 'App')).toEqual({ geoBlocking: true, geoBlockingSource: 'host' });
+    expect(geoOf(document, 'Legacy')).toEqual({ geoBlocking: false, geoBlockingSource: 'not enabled' });
+    expect(document.summary.find((item) => item.key === 'geoBlocking')?.value).toBe(1);
+
+    // Turned on, they apply to every host that does not override them.
+    await ctx.db.update(schema.settings).set({ value: JSON.stringify(geo({ block_countries: ['RU'] })) }).where(eq(schema.settings.key, 'geoblock'));
+    document = await build('protection_coverage');
+    expect(geoOf(document, 'Admin panel')).toEqual({ geoBlocking: false, geoBlockingSource: 'no block rules' });
+    expect(geoOf(document, 'App')).toEqual({ geoBlocking: true, geoBlockingSource: 'global + host' });
+    expect(geoOf(document, 'Legacy')).toEqual({ geoBlocking: true, geoBlockingSource: 'global' });
+    expect(document.summary.find((item) => item.key === 'geoBlocking')?.value).toBe(2);
+  });
+
   it('lists the addresses that skip sign-in, apart from the paths a sign-in is limited to', async () => {
     const [row] = await ctx.db.select().from(schema.proxyHosts).where(eq(schema.proxyHosts.id, seed.hostAuthId));
     const meta = JSON.parse(row.meta as string);

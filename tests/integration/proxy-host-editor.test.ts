@@ -43,7 +43,7 @@ import * as updatePreviewRoute from '../../app/api/v1/proxy-hosts/[id]/preview/r
 import * as approveRoute from '../../app/api/v1/change-requests/[id]/approve/route';
 import { first } from '@/src/lib/db/ops';
 import { setManagedCertificateProbeForTests } from '@/src/lib/managed-certificates';
-import { saveTrustedProxiesSettings } from '@/src/lib/settings';
+import { saveGeoBlockSettings, saveTrustedProxiesSettings } from '@/src/lib/settings';
 import { createSelfSignedServerCertificate } from '../helpers/certs';
 
 let tokens: Tokens;
@@ -281,6 +281,27 @@ describe('host editor pages', () => {
     } finally {
       setManagedCertificateProbeForTests(null);
     }
+  });
+
+  it('tell the editor whether the global geo blocking rules are on, and whether they block anything', async () => {
+    ctx.sessionUserId = ADMIN;
+    const globalGeo = async () => {
+      const page = (await ProxyHostPage({ params: Promise.resolve({ id: String(hosts.prod) }) })) as { props: { editor: Record<string, any> } };
+      return page.props.editor.geoblockGlobal;
+    };
+    const rules = {
+      enabled: true, block_countries: [], block_continents: [], block_asns: [], block_cidrs: [], block_ips: [],
+      allow_countries: [], allow_continents: [], allow_asns: [], allow_cidrs: [], allow_ips: [],
+      trusted_proxies: [], fail_closed: false, response_status: 403, response_body: 'Forbidden', response_headers: {}, redirect_url: '',
+    };
+    expect(await globalGeo()).toBeNull();
+
+    // Allow rules only make exceptions to block rules.
+    await saveGeoBlockSettings({ ...rules, allow_countries: ['AT'] });
+    expect(await globalGeo()).toEqual({ enabled: true, blocks: false });
+
+    await saveGeoBlockSettings({ ...rules, enabled: false, block_cidrs: ['0.0.0.0/0'] });
+    expect(await globalGeo()).toEqual({ enabled: false, blocks: true });
   });
 
   it('tell the editor how Caddy works out the client address, for the sign-in bypass', async () => {

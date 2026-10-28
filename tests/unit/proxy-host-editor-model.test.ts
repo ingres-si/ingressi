@@ -210,6 +210,12 @@ describe('host editor payload', () => {
     expect(input.geoblock).toMatchObject({ enabled: true, block_countries: ['RU'], response_status: 403 });
   });
 
+  it('reads a geo blocking mode stored without settings as merge, which is what Caddy does with it', () => {
+    expect(hostToForm(host({ geoblock: null, geoblockMode: 'override' })).geoblock).toMatchObject({ enabled: false, mode: 'merge' });
+    const withSettings = host({ geoblock: { enabled: false } as never, geoblockMode: 'override' });
+    expect(hostToForm(withSettings).geoblock).toMatchObject({ enabled: false, mode: 'override' });
+  });
+
   it('round-trips location rules, rate limits and error pages unchanged', () => {
     const stored = host();
     const saved = hostToForm(stored);

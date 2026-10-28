@@ -22,7 +22,7 @@ A host's own rules either **merge with** the global rules (both apply) or **over
 
 The Proxy Hosts list shows the geo blocking that applies to each host as a **Geo** pill, for example *Geo · blocks CN, RU*. Geo blocking with nothing to block (no rules, or allow rules only) shows none.
 
-With **Use these ranges for geo blocking too** (trusted proxies, [settings.md](settings.md)), the server's trusted proxy ranges are geo blocking's trusted proxies wherever its rules list none of their own: global, merged or a host's own.
+With **Use these ranges for geo blocking too** (trusted proxies, [settings.md](settings.md)), the server's trusted proxy ranges stand in for a list of trusted proxies that is empty: in the global rules, in a host's own rules, and in rules that override the global ones. A host that merges with the global rules gets the global list, which is the server's ranges when the global rules list none, together with the proxies the host lists itself. A list you write is never replaced.
 
 ## GeoIP setup
 

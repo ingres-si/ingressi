@@ -250,7 +250,12 @@ export async function loadHostEditorData(
     canWriteWaf: can(access, "waf:write"),
     wafRecentRules,
     rateLimitDefaults: rateLimit ? { enabled: Boolean(rateLimit.enabled), rules: rateLimit.rules.length } : null,
-    geoblockGlobal: geoblock ? { enabled: Boolean(geoblock.enabled) } : null,
+    geoblockGlobal: geoblock
+      ? {
+          enabled: Boolean(geoblock.enabled),
+          blocks: [geoblock.block_countries, geoblock.block_continents, geoblock.block_asns, geoblock.block_cidrs, geoblock.block_ips].some((rules) => (rules?.length ?? 0) > 0),
+        }
+      : null,
     dnsProviderConfigured: Boolean(dns?.default && dns.providers[dns.default]),
     dnsChoices: buildDnsProviderChoices(dns, (name) => getProviderDefinition(name)?.displayName ?? name),
     canCreateCertificate: can(access, "certificates:write") && scopeTagsFor(access, "certificates") === null,

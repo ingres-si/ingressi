@@ -122,7 +122,8 @@ export type HostEditorData = {
   /** The user may add, change and remove WAF exclusions (waf:write). */
   canWriteWaf?: boolean;
   rateLimitDefaults: { enabled: boolean; rules: number } | null;
-  geoblockGlobal: { enabled: boolean } | null;
+  /** The global geo blocking rules: whether they are on, and whether they have any block rules. */
+  geoblockGlobal: { enabled: boolean; blocks: boolean } | null;
   /** A default DNS provider exists, so Caddy can obtain wildcard certificates. */
   dnsProviderConfigured: boolean;
   /** The DNS providers under Certificate settings, for the certificate section. */

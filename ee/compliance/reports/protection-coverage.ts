@@ -58,26 +58,25 @@ function ruleCount(config: GeoBlockSettings, kind: "block" | "allow"): number {
 /**
  * Whether geo blocking applies to the host, mirroring resolveEffectiveGeoBlock
  * in src/lib/caddy.ts: an override uses the host's settings only; otherwise an
- * enabled host or global configuration applies (merged when both exist).
+ * enabled host or global configuration applies (merged when both are enabled).
+ * Allow rules only make exceptions to block rules, so without block rules
+ * nothing is blocked.
  */
 export function geoBlockState(global: GeoBlockSettings | null, host: Pick<ProxyHost, "geoblock" | "geoblockMode">): { enabled: boolean; source: string; blockRules: number; allowRules: number } {
   const hostConfig = host.geoblock;
-  if (!hostConfig?.enabled && !global?.enabled) return { enabled: false, source: "not enabled", blockRules: 0, allowRules: 0 };
+  const off = (source: string) => ({ enabled: false, source, blockRules: 0, allowRules: 0 });
+  const applied = (source: string, configs: GeoBlockSettings[]) => {
+    const blockRules = configs.reduce((sum, config) => sum + ruleCount(config, "block"), 0);
+    const allowRules = configs.reduce((sum, config) => sum + ruleCount(config, "allow"), 0);
+    return blockRules > 0 ? { enabled: true, source, blockRules, allowRules } : { enabled: false, source: "no block rules", blockRules, allowRules };
+  };
+  if (!hostConfig?.enabled && !global?.enabled) return off("not enabled");
   if (hostConfig && host.geoblockMode === "override") {
-    return hostConfig.enabled
-      ? { enabled: true, source: "host (override)", blockRules: ruleCount(hostConfig, "block"), allowRules: ruleCount(hostConfig, "allow") }
-      : { enabled: false, source: "turned off for this host", blockRules: 0, allowRules: 0 };
+    return hostConfig.enabled ? applied("host (override)", [hostConfig]) : off("turned off for this host");
   }
-  if (hostConfig?.enabled && global) {
-    return {
-      enabled: true,
-      source: global.enabled ? "global + host" : "host",
-      blockRules: ruleCount(global, "block") + ruleCount(hostConfig, "block"),
-      allowRules: ruleCount(global, "allow") + ruleCount(hostConfig, "allow"),
-    };
-  }
-  if (hostConfig?.enabled) return { enabled: true, source: "host", blockRules: ruleCount(hostConfig, "block"), allowRules: ruleCount(hostConfig, "allow") };
-  return { enabled: true, source: "global", blockRules: ruleCount(global!, "block"), allowRules: ruleCount(global!, "allow") };
+  if (hostConfig?.enabled && global?.enabled) return applied("global + host", [global, hostConfig]);
+  if (hostConfig?.enabled) return applied("host", [hostConfig]);
+  return applied("global", [global!]);
 }
 
 function pathLimited(protectedPaths: string[] | null | undefined, excludedPaths: string[] | null | undefined): boolean {

@@ -604,7 +604,9 @@ export function hostToForm(host: ProxyHost, context: FormContext = {}): HostForm
       ? { enabled: host.rateLimit.enabled, mode: host.rateLimit.mode, rules: host.rateLimit.rules.map(rateLimitRow) }
       : { enabled: false, mode: "merge", rules: [] },
     accessListId: host.accessListId,
-    geoblock: geoToForm(host.geoblock, host.geoblockMode),
+    // Override only means something next to the host's own config; without one
+    // (the API can store a mode alone) the global rules apply, as when merging.
+    geoblock: geoToForm(host.geoblock, host.geoblock ? host.geoblockMode : "merge"),
     signIn: signInOf(host),
     authentik: authentikForm(host, context.authentikDefaults),
     forwardAuth: genericForm(host, context.forwardAuthDefaults),

@@ -201,7 +201,8 @@ export function GeoBlockCard() {
   const allowCount = geo.allowCountries.length + geo.allowContinents.length + geo.allowAsns.length + geo.allowCidrs.length + geo.allowIps.length;
   const globalOn = Boolean(data.geoblockGlobal?.enabled);
   // Allow rules only make exceptions to block rules (the global ones too when merged).
-  const blocksNothing = allowCount > 0 && blockCount === 0 && (geo.mode === "override" || !globalOn);
+  const globalBlocks = globalOn && Boolean(data.geoblockGlobal?.blocks);
+  const blocksNothing = allowCount > 0 && blockCount === 0 && (geo.mode === "override" || !globalBlocks);
   const description = geo.enabled
     ? "Allow rules win over block rules."
     : !globalOn

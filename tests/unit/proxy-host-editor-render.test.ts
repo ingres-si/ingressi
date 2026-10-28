@@ -247,17 +247,20 @@ describe('host editor sections', () => {
 
   it('Security: geo blocking says which rules apply, and when allow rules alone block nothing', () => {
     const host = data().host!;
-    const render = (geoblock: object, geoblockMode: 'merge' | 'override', globalOn = true) =>
-      inEditor(createElement(SecuritySection), data({ host: { ...host, geoblock: geoblock as never, geoblockMode }, geoblockGlobal: { enabled: globalOn } }));
+    const render = (geoblock: object | null, geoblockMode: 'merge' | 'override', globalOn = true, globalBlocks = true) =>
+      inEditor(createElement(SecuritySection), data({ host: { ...host, geoblock: geoblock as never, geoblockMode }, geoblockGlobal: { enabled: globalOn, blocks: globalBlocks } }));
     expect(render({ enabled: false }, 'merge')).toContain('Off for this host: only the global geo blocking rules apply.');
     expect(render({ enabled: false }, 'override')).toContain('overrides the global geo blocking rules, so none apply');
     expect(render({ enabled: false }, 'override', false)).not.toContain('Off for this host');
+    // A mode without settings (the API can store one) leaves the global rules in force, so it reads as merge.
+    expect(render(null, 'override')).toContain('Off for this host: only the global geo blocking rules apply.');
 
     const allowOnly = { enabled: true, allow_countries: ['AT'] };
     expect(render(allowOnly, 'override')).toContain('with no block rules nothing is blocked');
     expect(render(allowOnly, 'merge', false)).toContain('with no block rules nothing is blocked');
-    // Merged, the host's allow rules make exceptions to the global block rules.
+    // Merged, the host's allow rules make exceptions to the global block rules, if it has any.
     expect(render(allowOnly, 'merge')).not.toContain('nothing is blocked');
+    expect(render(allowOnly, 'merge', true, false)).toContain('with no block rules nothing is blocked');
     expect(render({ ...allowOnly, block_continents: ['EU'] }, 'override')).not.toContain('nothing is blocked');
   });
 
