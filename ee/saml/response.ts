@@ -219,6 +219,8 @@ function oneRequestCache(requestId: string, createdAt: number): CacheProvider {
 function libraryReason(error: unknown): { reason: SamlFailureReason; message: string } {
   if (error instanceof SamlStatusError) return { reason: "status", message: error.message };
   const message = error instanceof Error ? error.message : String(error);
+  // node-saml 5.2 checks the Assertion's Issuer itself and says "Unknown SAML issuer. Expected: ...".
+  if (/^Unknown SAML issuer/.test(message)) return { reason: "issuer", message };
   if (/audience/i.test(message)) return { reason: "audience", message };
   if (/not yet valid/i.test(message)) return { reason: "not_yet_valid", message };
   // "No valid subject confirmation": none whose time window holds; a missing NotOnOrAfter cannot be parsed.
