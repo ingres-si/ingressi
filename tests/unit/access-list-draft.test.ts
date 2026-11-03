@@ -29,6 +29,7 @@ const list = {
   denyBody: null,
   denyRedirectUrl: null,
   failClosed: false,
+  skipAuthForAllowed: false,
   entries: [{ id: 5, username: 'alice', createdAt: '2026-02-04T10:00:00.000Z' }],
 };
 
@@ -78,6 +79,7 @@ describe('access list draft', () => {
       denyBody: null,
       denyRedirectUrl: null,
       failClosed: false,
+      skipAuthForAllowed: false,
       members: { add: [{ username: 'bob', password: 'Bob-Passw0rd!' }], remove: [], passwords: [{ id: 5, password: 'New-Passw0rd!' }] },
     });
   });

@@ -124,6 +124,7 @@ import {
   accessListRouteName,
   addressMatcherName,
   buildAccessListHandler,
+  allowedAddressMatcher,
   BLOCKED_SOURCES_LOG_VALUE,
   type AccessListCaddyContext,
   type CompiledAccessList,
@@ -1136,6 +1137,8 @@ export function buildAccessListCaddyConfig(
 ): {
   namedRoutes: Record<string, CaddyHttpRoute>;
   invokes: Map<number, Record<string, unknown>>;
+  /** Per list with skipAuthForAllowed: the matcher of the clients that skip its Basic Auth. */
+  authBypassMatchers: Map<number, Record<string, unknown>>;
   blockedSourcesRoute: CaddyHttpRoute | null;
 } {
   const context: AccessListCaddyContext = { trustedProxies: normalizeTrustedProxyRanges(trustedProxiesSettings?.ranges) };
@@ -1149,6 +1152,7 @@ export function buildAccessListCaddyConfig(
 
   const namedRoutes: Record<string, CaddyHttpRoute> = {};
   const invokes = new Map<number, Record<string, unknown>>();
+  const authBypassMatchers = new Map<number, Record<string, unknown>>();
   let blockedSourcesRoute: CaddyHttpRoute | null = null;
   for (const list of lists) {
     const systemList = list.systemKey === BLOCKED_SOURCES_KEY;
@@ -1171,6 +1175,10 @@ export function buildAccessListCaddyConfig(
       ...storedDenyResponse(list),
       failClosed: Boolean(list.failClosed),
     };
+    if (!systemList && list.skipAuthForAllowed) {
+      const matcher = allowedAddressMatcher(compiled, context);
+      if (matcher) authBypassMatchers.set(list.id, matcher);
+    }
     const handler = buildAccessListHandler(compiled, context);
     if (!handler) continue;
     if (systemList) {
@@ -1181,7 +1189,7 @@ export function buildAccessListCaddyConfig(
     namedRoutes[name] = { handle: [handler] };
     invokes.set(list.id, { handler: "invoke", name });
   }
-  return { namedRoutes, invokes, blockedSourcesRoute };
+  return { namedRoutes, invokes, authBypassMatchers, blockedSourcesRoute };
 }
 
 type BuildProxyRoutesOptions = {
@@ -1206,6 +1214,8 @@ type BuildProxyRoutesOptions = {
    * blocking.
    */
   accessListInvokes?: ReadonlyMap<number, Record<string, unknown>>;
+  /** Clients that skip a list's Basic Auth (skipAuthForAllowed), by list id. */
+  accessListAuthBypass?: ReadonlyMap<number, Record<string, unknown>>;
   /**
    * The server's trusted proxy ranges, normalized (private_ranges expanded):
    * with some, the sign-in bypass matches the client address behind them,
@@ -1556,7 +1566,7 @@ async function buildProxyRoutes(
     if (row.accessListId) {
       const accounts = accessAccounts.get(row.accessListId) ?? [];
       if (accounts.length > 0) {
-        handlers.push({
+        const basicAuth: Record<string, unknown> = {
           handler: "authentication",
           providers: {
             http_basic: {
@@ -1566,7 +1576,14 @@ async function buildProxyRoutes(
               }))
             }
           }
-        });
+        };
+        // Clients on the list's allow address rules skip the credentials.
+        const bypass = options.accessListAuthBypass?.get(row.accessListId);
+        handlers.push(
+          bypass
+            ? { handler: "subroute", routes: [{ match: [{ not: [bypass] }], handle: [basicAuth] }] }
+            : basicAuth
+        );
       }
     }
 
@@ -3421,6 +3438,7 @@ async function buildCaddyDocumentFromDatabase() {
       globalRateLimit,
       wafExclusions: await listWafExclusionRows(),
       accessListInvokes: accessListConfig.invokes,
+      accessListAuthBypass: accessListConfig.authBypassMatchers,
       trustedProxies: normalizeTrustedProxyRanges(trustedProxiesSettings?.ranges),
       geoBlockTrustedProxies,
     }

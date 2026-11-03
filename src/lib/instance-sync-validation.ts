@@ -80,6 +80,7 @@ function isAccessList(value: unknown): value is SyncPayload["data"]["accessLists
     (value.denyBody === undefined || isNullableString(value.denyBody)) &&
     (value.denyRedirectUrl === undefined || isNullableString(value.denyRedirectUrl)) &&
     (value.failClosed === undefined || isBoolean(value.failClosed)) &&
+    (value.skipAuthForAllowed === undefined || isBoolean(value.skipAuthForAllowed)) &&
     (value.systemKey === undefined || isNullableString(value.systemKey))
   );
 }

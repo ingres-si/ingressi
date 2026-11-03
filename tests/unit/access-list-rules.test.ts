@@ -196,6 +196,7 @@ describe('list settings', () => {
     expect(normalizeListSettings({ denyRedirectUrl: 'https://example.com/not-available' }).denyRedirectUrl).toBe('https://example.com/not-available');
     expect(() => normalizeListSettings({ defaultAction: 'block' })).toThrow(/defaultAction/);
     expect(() => normalizeListSettings({ failClosed: 'yes' })).toThrow(/failClosed/);
+    expect(() => normalizeListSettings({ skipAuthForAllowed: 'yes' })).toThrow(/skipAuthForAllowed/);
     expect(() => normalizeListSettings({ denyBody: 'x'.repeat(4097) })).toThrow(/4096/);
     expect(() => normalizeListSettings({ denyBody: 'a\u0007' })).toThrow(/control/);
     expect(normalizeListSettings({ denyBody: '<h1>Gone</h1>\nBye' }).denyBody).toBe('<h1>Gone</h1>\nBye');

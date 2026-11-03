@@ -449,6 +449,13 @@
       "when": 1792010100746,
       "tag": "0065_proxy_hosts_group",
       "breakpoints": true
+    },
+    {
+      "idx": 66,
+      "version": "6",
+      "when": 1793705840156,
+      "tag": "0066_access_list_skip_auth",
+      "breakpoints": true
     }
   ]
 }

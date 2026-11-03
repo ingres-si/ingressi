@@ -210,7 +210,7 @@ describe('buildAccessListCaddyConfig', () => {
   const now = new Date().toISOString();
   const row = (overrides: Partial<typeof schema.accessLists.$inferSelect>) => ({
     id: 1, name: 'List', description: null, createdBy: null, createdAt: now, updatedAt: now,
-    defaultAction: 'allow', denyStatus: 403, denyBody: null, denyRedirectUrl: null, failClosed: false, systemKey: null,
+    defaultAction: 'allow', denyStatus: 403, denyBody: null, denyRedirectUrl: null, failClosed: false, skipAuthForAllowed: false, systemKey: null,
     ...overrides,
   });
   const rule = (overrides: Partial<typeof schema.accessListRules.$inferSelect>) => ({
@@ -233,6 +233,17 @@ describe('buildAccessListCaddyConfig', () => {
     expect((config.namedRoutes.ingressi_acl_1 as any).handle[0].routes).toEqual([
       { match: [{ remote_ip: { ranges: ['198.51.100.19'] } }], handle: expect.any(Array) },
     ]);
+  });
+
+  it('exposes the allowed addresses as the Basic Auth bypass only when skipAuthForAllowed is on (#374)', () => {
+    const rules = [
+      rule({ id: 1, action: 'allow', matchValues: '["10.1.0.0/16"]' }),
+      rule({ id: 2, position: 1, action: 'allow', kind: 'country', matchValues: '["IT"]' }),
+    ];
+    expect(buildAccessListCaddyConfig([row({})], rules, null).authBypassMatchers.size).toBe(0);
+    const on = buildAccessListCaddyConfig([row({ skipAuthForAllowed: true })], rules, null);
+    expect(on.authBypassMatchers.get(1)).toEqual({ remote_ip: { ranges: ['10.1.0.0/16'] } });
+    expect(buildAccessListCaddyConfig([row({ skipAuthForAllowed: true })], [], null).authBypassMatchers.size).toBe(0);
   });
 
   it('orders rules by position, then id', () => {

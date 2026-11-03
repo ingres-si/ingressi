@@ -297,6 +297,11 @@ const settingsProperties = {
     description:
       "Deny when the client address cannot be worked out behind a trusted proxy (no usable X-Forwarded-For). Default false.",
   },
+  skipAuthForAllowed: {
+    type: "boolean",
+    description:
+      "Clients whose address matches an allow address rule skip the list's Basic Auth; everyone else is asked for credentials. Default false.",
+  },
 };
 
 export const ACCESS_LISTS_OPENAPI_SCHEMAS = {

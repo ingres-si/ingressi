@@ -64,6 +64,7 @@ export type AccessList = {
   denyBody: string | null;
   denyRedirectUrl: string | null;
   failClosed: boolean;
+  skipAuthForAllowed: boolean;
   /** "blocked_sources" for the global Blocked sources list; null for lists users create. */
   system: typeof BLOCKED_SOURCES_KEY | null;
   createdAt: string;
@@ -81,6 +82,7 @@ export type AccessListInput = {
   denyBody?: string | null;
   denyRedirectUrl?: string | null;
   failClosed?: boolean;
+  skipAuthForAllowed?: boolean;
 };
 
 export type AccessListUpdate = {
@@ -93,6 +95,7 @@ export type AccessListUpdate = {
   denyBody?: string | null;
   denyRedirectUrl?: string | null;
   failClosed?: boolean;
+  skipAuthForAllowed?: boolean;
 };
 
 export type AccessListSave = AccessListUpdate & {
@@ -182,6 +185,7 @@ function toAccessList(row: AccessListRow, entries: AccessListEntryRow[], rules: 
     denyBody: row.denyBody ?? null,
     denyRedirectUrl: row.denyRedirectUrl ?? null,
     failClosed: Boolean(row.failClosed),
+    skipAuthForAllowed: Boolean(row.skipAuthForAllowed),
     system: isSystemList(row) ? BLOCKED_SOURCES_KEY : null,
     createdAt: toIso(row.createdAt)!,
     updatedAt: toIso(row.updatedAt)!
@@ -438,6 +442,7 @@ export async function createAccessList(input: AccessListInput, actorUserId: numb
         denyBody: settings.denyBody ?? null,
         denyRedirectUrl: settings.denyRedirectUrl ?? null,
         failClosed: settings.failClosed ?? false,
+        skipAuthForAllowed: settings.skipAuthForAllowed ?? false,
         createdAt: now,
         updatedAt: now
       })
@@ -923,6 +928,7 @@ export function blockedSourcesPlaceholder(): BlockedSourcesPlaceholder {
     denyBody: null,
     denyRedirectUrl: null,
     failClosed: false,
+    skipAuthForAllowed: false,
     system: BLOCKED_SOURCES_KEY,
     createdAt: null,
     updatedAt: null,

@@ -666,6 +666,18 @@ export function AccessListEditor({
                   onChange={(event) => setDraft({ ...draft, denyRedirectUrl: event.target.value })}
                 />
               </div>
+              <div className="flex items-start gap-3.5 pt-1">
+                <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                  <Label htmlFor="access-list-skip-auth" className="text-[13px]">Skip Basic Auth for allowed addresses</Label>
+                  <span className="text-xs text-muted-foreground">Clients that match an Allow address rule are not asked for a username and password. Everyone else still is.</span>
+                </span>
+                <Switch
+                  id="access-list-skip-auth"
+                  checked={draft.skipAuthForAllowed}
+                  disabled={!canWrite}
+                  onCheckedChange={(checked) => setDraft({ ...draft, skipAuthForAllowed: checked })}
+                />
+              </div>
               {(trustedProxiesConfigured || draft.failClosed) && (
                 <div className="flex items-start gap-3.5 pt-1">
                   <span className="flex min-w-0 flex-1 flex-col gap-0.5">

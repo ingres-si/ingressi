@@ -47,6 +47,7 @@ export type AccessListDraft = {
   denyBody: string;
   denyRedirectUrl: string;
   failClosed: boolean;
+  skipAuthForAllowed: boolean;
   members: DraftMember[];
 };
 
@@ -66,6 +67,7 @@ type ListLike = {
   denyBody: string | null;
   denyRedirectUrl: string | null;
   failClosed: boolean;
+  skipAuthForAllowed: boolean;
   entries: ReadonlyArray<{ id: number; username: string; createdAt: string }>;
 };
 
@@ -94,6 +96,7 @@ export function draftFromList(list: ListLike): AccessListDraft {
     denyBody: list.denyBody ?? "",
     denyRedirectUrl: list.denyRedirectUrl ?? "",
     failClosed: list.failClosed,
+    skipAuthForAllowed: list.skipAuthForAllowed,
     members: list.entries.map((entry) => ({
       key: `member-${entry.id}`,
       id: entry.id,
@@ -153,6 +156,7 @@ function comparable(draft: AccessListDraft) {
     denyBody: draft.denyBody,
     denyRedirectUrl: draft.denyRedirectUrl.trim(),
     failClosed: draft.failClosed,
+    skipAuthForAllowed: draft.skipAuthForAllowed,
     members: draft.members.map((member) => ({
       id: member.id,
       username: member.username,
@@ -186,6 +190,7 @@ export function draftToSave(draft: AccessListDraft, options: { system: boolean; 
     denyBody: draft.denyBody.length > 0 ? draft.denyBody : null,
     denyRedirectUrl: draft.denyRedirectUrl.trim() || null,
     failClosed: draft.failClosed,
+    skipAuthForAllowed: draft.skipAuthForAllowed,
     members: {
       add: draft.members
         .filter((member) => member.id === null && !member.removed && member.password)

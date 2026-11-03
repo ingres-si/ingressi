@@ -158,7 +158,7 @@ export type SyncPayload = {
 };
 
 type WithOptionalTags<T extends { tags: string }> = Omit<T, "tags"> & { tags?: string };
-type AccessListSettingColumns = "defaultAction" | "denyStatus" | "denyBody" | "denyRedirectUrl" | "failClosed" | "systemKey";
+type AccessListSettingColumns = "defaultAction" | "denyStatus" | "denyBody" | "denyRedirectUrl" | "failClosed" | "skipAuthForAllowed" | "systemKey";
 type WithOptionalAccessListSettings<T extends Record<AccessListSettingColumns, unknown>> = Omit<T, AccessListSettingColumns> &
   Partial<Pick<T, AccessListSettingColumns>>;
 

@@ -146,6 +146,14 @@ function copyGeo(geo: GeoSets): GeoSets {
   return { countries: [...geo.countries], continents: [...geo.continents], asns: [...geo.asns] };
 }
 
+/** Matches the clients of the list's allow address rules; null when it has none. */
+export function allowedAddressMatcher(list: CompiledAccessList, context: AccessListCaddyContext): Record<string, unknown> | null {
+  const ranges = addressRanges(
+    list.rules.filter((rule) => rule.action === "allow" && rule.kind === "ip").flatMap((rule) => rule.values)
+  );
+  return ranges.length > 0 ? addressMatch(context, ranges) : null;
+}
+
 /** The routes of a list's subroute, in order; empty when the list lets everyone through. */
 export function buildAccessListRoutes(list: CompiledAccessList, context: AccessListCaddyContext): CaddyRoute[] {
   const routes: CaddyRoute[] = [];

@@ -370,9 +370,10 @@ export type AccessListSettings = {
   denyBody: string | null;
   denyRedirectUrl: string | null;
   failClosed: boolean;
+  skipAuthForAllowed: boolean;
 };
 
-const SETTINGS_FIELDS = ["defaultAction", "denyStatus", "denyBody", "denyRedirectUrl", "failClosed"] as const;
+const SETTINGS_FIELDS = ["defaultAction", "denyStatus", "denyBody", "denyRedirectUrl", "failClosed", "skipAuthForAllowed"] as const;
 
 /** The settings fields present in `input`, validated; missing fields are left out. */
 export function normalizeListSettings(input: Record<string, unknown>): Partial<AccessListSettings> {
@@ -419,6 +420,10 @@ export function normalizeListSettings(input: Record<string, unknown>): Partial<A
   if (input.failClosed !== undefined) {
     if (typeof input.failClosed !== "boolean") invalid("failClosed must be true or false");
     out.failClosed = input.failClosed;
+  }
+  if (input.skipAuthForAllowed !== undefined) {
+    if (typeof input.skipAuthForAllowed !== "boolean") invalid("skipAuthForAllowed must be true or false");
+    out.skipAuthForAllowed = input.skipAuthForAllowed;
   }
   return out;
 }

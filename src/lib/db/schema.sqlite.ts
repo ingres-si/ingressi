@@ -232,6 +232,8 @@ export const accessLists = sqliteTable(
     denyRedirectUrl: text("denyRedirectUrl"),
     /** Deny when the client address cannot be worked out behind a trusted proxy. */
     failClosed: integer("failClosed", { mode: "boolean" }).notNull().default(false),
+    /** Clients matching an allow address rule skip the list's Basic Auth. */
+    skipAuthForAllowed: integer("skipAuthForAllowed", { mode: "boolean" }).notNull().default(false),
     /** "blocked_sources" for the global Blocked sources list; null for lists users create. */
     systemKey: text("systemKey")
   },

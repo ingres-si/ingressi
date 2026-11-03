@@ -47,6 +47,7 @@ function list(id: number, name: string, overrides: Partial<AccessList> = {}): Ac
     denyBody: null,
     denyRedirectUrl: null,
     failClosed: false,
+    skipAuthForAllowed: false,
     system: null,
     createdAt: STAMP,
     updatedAt: STAMP,

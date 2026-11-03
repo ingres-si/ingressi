@@ -1,0 +1,1 @@
+ALTER TABLE "access_lists" ADD COLUMN "skipAuthForAllowed" boolean DEFAULT false NOT NULL;
