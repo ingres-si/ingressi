@@ -2,6 +2,15 @@
 
 Pull the new images and recreate the containers with `docker compose pull && docker compose up -d`. (`docker compose restart` does not re-read `.env`.)
 
+## Upgrading to v2.10.0
+
+- **Access lists can skip Basic Auth for allowed addresses.** **Skip Basic Auth for allowed addresses** on a list (`skipAuthForAllowed` in the REST API) lets clients that match an Allow IP or CIDR rule in without a username and password; everyone else still signs in. Off by default. See [access-lists.md](access-lists.md#members-basic-auth).
+- **WAF `allow` rules for trusted addresses work.** A custom rule with `phase:1` and `allow` now runs before the Core Rule Set, so it skips the rules after it. It used to run after them and had no effect. Other custom rules keep running after the Core Rule Set. See [waf.md](waf.md#custom-rules).
+- **TCP and UDP L4 hosts can share a port.** A TCP and a UDP host on the same port (RustDesk's 21116, for example) used to end up in one server, and only one of them listened. They now get one listener each.
+- **`hostname` is empty in the Coraza lines of `waf-rules.log`.** That is Coraza's own field and cannot be filled in. `waf-audit.log` has the host of every event; see [waf.md](waf.md#logs-for-fail2ban-and-similar-tools).
+- **Dependency updates.** The Caddy image's Go and Ubuntu base images, and the production and development dependency groups.
+- Database migration `0066` adds one column to access lists; it runs on start.
+
 ## Upgrading to v2.9.0
 
 - **PROXY protocol on ports 80 and 443.** **Host defaults → Trusted proxies → PROXY protocol from** lists the TCP load balancers in front of Caddy (HAProxy in TCP mode, a cloud network load balancer, OPNsense, another Caddy with layer4) that open each connection with a PROXY protocol header, v1 or v2. Access logs, access lists, geo blocking, rate limits, the WAF, analytics and the addresses that skip sign-in then see the visitor, not the balancer. Only the listed addresses may send the header, and from them it is optional. REST: `proxy_protocol_ranges` in `/api/v1/settings/trusted-proxies`. See [settings.md](settings.md).
