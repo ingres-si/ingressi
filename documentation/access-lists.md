@@ -51,6 +51,8 @@ By default `403 Forbidden`. A list can set another status (400 to 599) and body,
 
 A list can also have members (**Basic auth** on the list's page): usernames and passwords, stored only as bcrypt hashes, so a password is shown only until the list is saved. With members, visitors the rules let through then have to sign in. Without members, nobody is asked to sign in. A list with members and no rules works exactly as access lists always did.
 
+Turn on **Skip Basic Auth for allowed addresses** to ask for a username and password only from clients the list does not name. Clients that match an **Allow** address rule (an IP or CIDR; country, continent and AS number rules cannot skip it) go straight in; everyone else the rules let through still signs in. A client whose address cannot be worked out behind a trusted proxy is asked to sign in. The setting is `skipAuthForAllowed` in the REST API.
+
 ## Blocked sources
 
 **Blocked sources** is one global list that applies to every host, before anything else: before rate limiting, the WAF, path rules and each host's own list. It only denies, and lets through everything it does not name. Use it for scanners and networks that keep probing.

@@ -85,6 +85,10 @@ Open a WAF event on **Security events** to see why it was blocked: every rule th
 
 For each rule that added points, the event suggests the narrowest exclusion: the rule, on the host that served the request, for the request's path, on the matched variable when the record names one. **This was a false positive** opens the exclusion form with it filled in; the host, path (picked from the directories above the request's path, or typed) and variable can all be changed before adding. A path with an ID in it matches only that one ID, so the form offers the directory above it. Only add one when the request was legitimate.
 
+## Logs for Fail2Ban and similar tools
+
+The `[hostname ""]` in the Coraza lines of `waf-rules.log` is always empty: Coraza fills it from the server address, which the Caddy connector does not provide, so Ingressi cannot change it. Use `waf-audit.log` (JSON, in the same log volume) instead: each record has the request's `Host` header, URI, client address and every matched rule id.
+
 ## Credentials in events
 
 In the event log, credential header values (`Authorization`, `Cookie`, `Set-Cookie`, API-key and token headers, …) and the cookie or credential values that rule messages echo are stored as `[redacted]`.
@@ -92,6 +96,12 @@ In the event log, credential header values (`Authorization`, `Cookie`, `Set-Cook
 ## Custom rules
 
 SecLang directives (`SecRule`, `SecAction`, `SecMarker`, `SecDefaultAction` and the body limit directives) run after the Core Rule Set on every host that follows or merges with the global settings. Lines that could read files, run programs or switch the WAF off are left out, and the page lists them before you save. Use ids from 9000 up; the Core Rule Set uses 900000 to 999999.
+
+A rule with `phase:1` and the `allow` action (for example to trust a LAN range) is placed before the Core Rule Set instead, so it skips the rules after it. It is the only kind of custom rule that runs first.
+
+```
+SecRule REMOTE_ADDR "@ipMatch 192.168.0.0/16" "id:9000,phase:1,allow,nolog,msg:'Trusted LAN'"
+```
 
 For example:
 ```
