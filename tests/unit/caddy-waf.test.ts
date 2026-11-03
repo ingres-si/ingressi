@@ -1242,3 +1242,16 @@ describe('listDroppedWafDirectives', () => {
     expect(listDroppedWafDirectives({ ...baseWaf, custom_directives: kept }, [])).toEqual([]);
   });
 });
+
+describe('phase 1 allow rules in custom directives (#373)', () => {
+  it('are emitted before the CRS include; other rules stay after', () => {
+    const h = buildWafHandler({
+      enabled: true, mode: 'On', load_owasp_crs: true,
+      custom_directives: 'SecRule REMOTE_ADDR "@ipMatch 192.168.200.0/23" "id:9000,phase:1,allow,nolog"\nSecRule REQUEST_URI "@contains /x" "id:9001,phase:1,deny"',
+    } as never) as { directives: string };
+    const d = h.directives;
+    expect(d.indexOf('id:9000')).toBeGreaterThan(-1);
+    expect(d.indexOf('id:9000')).toBeLessThan(d.indexOf('Include @owasp_crs/*.conf'));
+    expect(d.indexOf('id:9001')).toBeGreaterThan(d.indexOf('Include @owasp_crs/*.conf'));
+  });
+});

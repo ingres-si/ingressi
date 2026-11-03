@@ -325,6 +325,47 @@ function hasChainAction(text: string): boolean {
 }
 
 /**
+ * True when a rule directive is an `allow` rule pinned to phase 1. Such a rule
+ * only works ahead of the CRS: phase 1 rules run in file order, and `allow`
+ * skips the rules after it.
+ */
+function isPhase1AllowRule(text: string): boolean {
+  const parts = parseRuleParts(text);
+  if (!parts) return false;
+  const actions = parseActionList(parts.actions);
+  const phase = actions.filter(({ key }) => key === 'phase').pop()?.value.toLowerCase();
+  return (phase === '1' || phase === 'request') && actions.some(({ key }) => key === 'allow');
+}
+
+/**
+ * Splits already-filtered custom directive lines into the phase 1 `allow`
+ * rules (with their chain children), which must precede the CRS to take
+ * effect, and everything else, which keeps its order.
+ */
+export function splitEarlyAllowRules(lines: string[]): { early: string[]; rest: string[] } {
+  const trimmed = lines.map(goTrimSpace);
+  const { units } = directiveUnits(trimmed);
+  const early: string[] = [];
+  const rest: string[] = [];
+  const claimed = new Set<number>();
+  let chaining = false;
+  let chainEarly = false;
+  for (const unit of units) {
+    const text = joinUnit(unit.map((i) => trimmed[i]));
+    if (!RULE_DIRECTIVE.test(text)) { chaining = false; continue; }
+    const isEarly: boolean = chaining ? chainEarly : isPhase1AllowRule(text);
+    if (!chaining) chainEarly = isEarly;
+    chaining = hasChainAction(text);
+    if (isEarly) {
+      for (const i of unit) claimed.add(i);
+      early.push(...unit.map((i) => lines[i]));
+    }
+  }
+  lines.forEach((line, i) => { if (!claimed.has(i)) rest.push(line); });
+  return { early, rest };
+}
+
+/**
  * The rule id a SecRule / SecAction directive sets, or null when it sets
  * none. Coraza's id action reads its value with strconv.Atoi, so `id:'09001'`
  * is rule 9001; with several id actions the last one wins.
@@ -978,12 +1019,17 @@ export function buildWafHandler(
     ? crsTuningDirectives(resolveWafTuning(waf))
     : { beforeRules: [], afterRules: [], ruleIds: [] };
   const exclusionDirectives = buildExclusionDirectives(exclusions);
+  // Filtered up front so phase 1 allow rules can go ahead of the CRS.
+  const { kept, dropped } = filterDirectiveLines(waf.custom_directives, {
+    crsLoaded: Boolean(waf.load_owasp_crs),
+    reservedRuleIds: new Set([...tuning.ruleIds, ...exclusionDirectives.ruleIds, ...(waf.load_owasp_crs ? [RAW_BODY_RULE_ID] : [])]),
+  });
+  const { early: earlyAllowRules, rest: customLines } = splitEarlyAllowRules(kept.map(({ line }) => line));
   if (exclusionDirectives.skipped.length > 0) {
     console.warn(
       `[waf] ${typeof source === 'string' ? source : source.label}: ${exclusionDirectives.skipped.length} stored rule exclusion(s) are invalid and left out (ids ${exclusionDirectives.skipped.map((e) => e.id).join(', ')})`
     );
   }
-  const generatedRuleIds = new Set([...tuning.ruleIds, ...exclusionDirectives.ruleIds, ...(waf.load_owasp_crs ? [RAW_BODY_RULE_ID] : [])]);
 
   // `mode` is interpolated straight into the directive block, and settings are
   // stored without validation — so anything other than a known engine mode
@@ -1004,12 +1050,14 @@ export function buildWafHandler(
       ...tuning.beforeRules,
       // Runtime exclusions run in phase 1 ahead of every rule they exclude.
       ...exclusionDirectives.rules,
+      // Custom phase 1 allow rules (e.g. trusted LAN ranges) must precede the CRS.
+      ...earlyAllowRules,
       'Include @owasp_crs/*.conf',
       // Before any SecRuleRemoveById: updating a removed rule fails the config.
       ...tuning.afterRules,
     );
   } else {
-    parts.push(...exclusionDirectives.rules);
+    parts.push(...exclusionDirectives.rules, ...earlyAllowRules);
   }
 
   // Whole-scope exclusions: the legacy excluded_rule_ids lists (runtime-
@@ -1061,13 +1109,9 @@ export function buildWafHandler(
   // Allowlist approach: only permit known-safe directive prefixes in custom
   // directives. Input validation rejects these lines on save, but stored
   // values can predate a rule, so say what is left out.
-  const { kept, dropped } = filterDirectiveLines(waf.custom_directives, {
-    crsLoaded: Boolean(waf.load_owasp_crs),
-    reservedRuleIds: generatedRuleIds,
-  });
   if (dropped.length > 0) warnDroppedBySource(source, dropped);
-  if (kept.length > 0) {
-    parts.push(kept.map(({ line }) => line).join('\n'));
+  if (customLines.length > 0) {
+    parts.push(customLines.join('\n'));
   }
 
   const handler: Record<string, unknown> = {
