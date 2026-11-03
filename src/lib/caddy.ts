@@ -2939,7 +2939,7 @@ export function buildL4LoadBalancerHandlerConfig(meta: LoadBalancerMeta | undefi
   return result;
 }
 
-async function buildL4Servers(): Promise<Record<string, unknown> | null> {
+export async function buildL4Servers(): Promise<Record<string, unknown> | null> {
   const l4Hosts = await appDb
     .select()
     .from(l4ProxyHosts)
@@ -2970,17 +2970,20 @@ async function buildL4Servers(): Promise<Record<string, unknown> | null> {
     getGeoBlockSettings(),
   ]);
 
-  // Group hosts by listen address — multiple hosts on the same port share routes in one server
+  // Group hosts by protocol and listen address — multiple hosts on the same
+  // port and protocol share routes in one server. TCP and UDP on one port are
+  // separate listeners (issue #376), so they get separate servers.
   const serverMap = new Map<string, typeof l4HostsFiltered>();
   for (const host of l4HostsFiltered) {
-    const key = host.listenAddress;
+    const key = `${host.protocol === "udp" ? "udp" : "tcp"}/${host.listenAddress}`;
     if (!serverMap.has(key)) serverMap.set(key, []);
     serverMap.get(key)!.push(host);
   }
 
   const servers: Record<string, unknown> = {};
   let serverIdx = 0;
-  for (const [listenAddr, hosts] of serverMap) {
+  for (const hosts of serverMap.values()) {
+    const listenAddr = hosts[0].listenAddress;
     const routes: Record<string, unknown>[] = [];
 
     for (const host of hosts) {
@@ -3110,8 +3113,7 @@ async function buildL4Servers(): Promise<Record<string, unknown> | null> {
       routes.push(route);
     }
 
-    // Determine protocol from the hosts on this listen address.
-    // All hosts sharing a listen address must use the same protocol.
+    // Every host of a server has the same protocol (the grouping key).
     const protocol = hosts[0].protocol as string;
     const listenValue = protocol === "udp" ? `udp/${listenAddr}` : listenAddr;
 
