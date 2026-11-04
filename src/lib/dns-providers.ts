@@ -214,6 +214,32 @@ const BASE_DNS_PROVIDERS: DnsProviderDefinition[] = [
     ],
   },
   {
+    name: "powerdns",
+    displayName: "PowerDNS",
+    description: "PowerDNS Authoritative Server API",
+    docsUrl: "https://github.com/caddy-dns/powerdns",
+    modulePath: "github.com/caddy-dns/powerdns",
+    fields: [
+      {
+        key: "server_url",
+        label: "Server URL",
+        type: "string",
+        required: true,
+        placeholder: "https://powerdns.example.net:8081",
+        description: "Base URL of the PowerDNS API (webserver with api=yes)",
+      },
+      { key: "api_token", label: "API Key", type: "password", required: true },
+      {
+        key: "server_id",
+        label: "Server ID",
+        type: "string",
+        required: false,
+        placeholder: "localhost",
+        description: "Defaults to localhost",
+      },
+    ],
+  },
+  {
     name: "godaddy",
     displayName: "GoDaddy",
     description: "GoDaddy DNS API",

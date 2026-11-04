@@ -135,6 +135,56 @@ describe("DNS provider registry", () => {
     });
   });
 
+  it("registers PowerDNS with the Caddy module path and server URL, API key and server ID fields", () => {
+    const provider = getProviderDefinition("powerdns");
+
+    expect(provider).toMatchObject({
+      name: "powerdns",
+      displayName: "PowerDNS",
+      docsUrl: "https://github.com/caddy-dns/powerdns",
+      modulePath: "github.com/caddy-dns/powerdns",
+    });
+    expect(provider?.fields).toEqual([
+      {
+        key: "server_url",
+        label: "Server URL",
+        type: "string",
+        required: true,
+        placeholder: "https://powerdns.example.net:8081",
+        description: "Base URL of the PowerDNS API (webserver with api=yes)",
+      },
+      { key: "api_token", label: "API Key", type: "password", required: true },
+      {
+        key: "server_id",
+        label: "Server ID",
+        type: "string",
+        required: false,
+        placeholder: "localhost",
+        description: "Defaults to localhost",
+      },
+      ...challengeOptionFields(),
+    ]);
+    expect(DNS_PROVIDERS.map((p) => p.name)).toContain("powerdns");
+  });
+
+  it("encrypts only the API key and emits PowerDNS credentials for Caddy DNS challenges", () => {
+    const credentials = {
+      server_url: "https://powerdns.example.net:8081",
+      api_token: "powerdns-key",
+      server_id: "localhost",
+    };
+    const encrypted = encryptProviderCredentials("powerdns", credentials);
+
+    expect(isEncryptedSecret(encrypted.api_token)).toBe(true);
+    expect(encrypted.server_url).toBe(credentials.server_url);
+    expect(encrypted.server_id).toBe(credentials.server_id);
+    expect(decryptProviderCredentials("powerdns", encrypted)).toEqual(credentials);
+    expect(buildDnsChallengeConfig("powerdns", encrypted, ["1.1.1.1"])).toEqual({
+      provider: { name: "powerdns", ...credentials },
+      resolvers: ["1.1.1.1"],
+    });
+  });
+
   it("registers deSEC with the Caddy module path and API token field", () => {
     const provider = getProviderDefinition("desec");
 
