@@ -135,6 +135,49 @@ describe("DNS provider registry", () => {
     });
   });
 
+  it("registers PowerDNS with the Caddy module path and API key/secret fields", () => {
+    const provider = getProviderDefinition("powerdns");
+
+    expect(provider).toMatchObject({
+      name: "powerdns",
+      displayName: "PowerDNS",
+      description: "PowerDNS API",
+      docsUrl: "https://github.com/caddy-dns/powerdns",
+      modulePath: "github.com/caddy-dns/powerdns",
+    });
+    expect(provider?.fields).toEqual([
+      {
+        key: "server_url",
+        label: "Server URL",
+        type: "string",
+        required: true,
+        placeholder: "https://powerdns.example.net"
+      },
+      { key: "api_token", label: "API Key", type: "password", required: true },
+      { key: "server_id", label: "Server ID", type: "string", required: false },
+      ...challengeOptionFields(),
+    ]);
+    expect(DNS_PROVIDERS.map((p) => p.name)).toContain("powerdns");
+  });
+
+  it("encrypts, decrypts, and emits PowerDNS credentials for Caddy DNS challenges", () => {
+    const encrypted = encryptProviderCredentials("powerdns", {
+      api_token: "powerdns-key",
+    });
+
+    expect(isEncryptedSecret(encrypted.api_key)).toBe(true);
+    expect(decryptProviderCredentials("powerdns", encrypted)).toEqual({
+      api_token: "powerdns-key",
+    });
+    expect(buildDnsChallengeConfig("powerdns", encrypted, ["1.1.1.1"])).toEqual({
+      provider: {
+        name: "powerdns",
+        api_token: "powerdns-key",
+      },
+      resolvers: ["1.1.1.1"],
+    });
+  });
+
   it("registers deSEC with the Caddy module path and API token field", () => {
     const provider = getProviderDefinition("desec");
 
