@@ -153,7 +153,7 @@ describe("DNS provider registry", () => {
         required: true,
         placeholder: "https://powerdns.example.net"
       },
-      { key: "api_token", label: "API Key", type: "password", required: true },
+      { key: "api_token", label: "API Token", type: "password", required: true },
       { key: "server_id", label: "Server ID", type: "string", required: false },
       ...challengeOptionFields(),
     ]);
@@ -165,7 +165,7 @@ describe("DNS provider registry", () => {
       api_token: "powerdns-key",
     });
 
-    expect(isEncryptedSecret(encrypted.api_key)).toBe(true);
+    expect(isEncryptedSecret(encrypted.api_token)).toBe(true);
     expect(decryptProviderCredentials("powerdns", encrypted)).toEqual({
       api_token: "powerdns-key",
     });
