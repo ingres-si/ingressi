@@ -22,6 +22,7 @@ require (
 	github.com/caddy-dns/njalla v1.0.0
 	github.com/caddy-dns/ovh v1.1.0
 	github.com/caddy-dns/porkbun v0.3.1
+	github.com/caddy-dns/powerdns v1.0.2
 	github.com/caddy-dns/rfc2136 v1.0.0
 	github.com/caddy-dns/route53 v1.6.2
 	github.com/caddy-dns/spaceship v1.0.0
@@ -149,6 +150,7 @@ require (
 	github.com/libdns/njalla v1.0.0 // indirect
 	github.com/libdns/ovh v1.1.0 // indirect
 	github.com/libdns/porkbun v1.0.1 // indirect
+	github.com/libdns/powerdns v0.1.4 // indirect
 	github.com/libdns/rfc2136 v1.0.0 // indirect
 	github.com/libdns/route53 v1.6.2 // indirect
 	github.com/libdns/spaceship v1.0.0 // indirect
@@ -164,6 +166,7 @@ require (
 	github.com/mitchellh/copystructure v1.2.0 // indirect
 	github.com/mitchellh/go-ps v1.0.0 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
+	github.com/mittwald/go-powerdns v0.6.7 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/nlnwa/whatwg-url v0.6.2 // indirect
 	github.com/oschwald/geoip2-golang v1.13.0 // indirect
