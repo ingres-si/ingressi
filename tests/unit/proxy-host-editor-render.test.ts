@@ -126,6 +126,7 @@ function inEditor(element: ReactElement, editorData: HostEditorData = data(), fo
       group: String,
       role: String,
       clientCertificate: String,
+      ca: String,
       globalWafMode: 'blocking',
     },
     update: () => {},

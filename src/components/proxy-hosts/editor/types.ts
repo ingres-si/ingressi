@@ -43,7 +43,11 @@ export type EditorAccessList = {
 
 export type EditorUser = { id: number; name: string; detail: string | null };
 export type EditorGroup = { id: number; name: string; description: string | null; members: number };
-export type EditorCa = { id: number; name: string };
+/**
+ * `issuesHere`: Ingressi has issued client certificates from it (revoked ones too). Trusting such a CA
+ * accepts only those that are not revoked; any other CA, such as an imported one, accepts everything it signs.
+ */
+export type EditorCa = { id: number; name: string; issuesHere: boolean };
 export type EditorMtlsRole = { id: number; name: string; description: string | null; certificates: number };
 export type EditorClientCertificate = { id: number; caId: number; commonName: string; validTo: string; revoked: boolean };
 

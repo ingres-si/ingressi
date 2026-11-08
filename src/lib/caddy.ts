@@ -3284,7 +3284,7 @@ async function buildCaddyDocumentFromDatabase() {
 
   // Build domain → CA cert IDs map for mTLS-enabled hosts.
   // New model (trusted_client_cert_ids + trusted_role_ids): derive CAs from selected certs and pin to those certs.
-  // Old model (ca_certificate_ids): trust entire CAs as before.
+  // CA model (ca_certificate_ids): trust entire CAs. Ignored when certs or roles resolve (Caddy cannot pin leaves for some CAs only).
   const mTlsDomainMap = new Map<string, number[]>();
   // Per-domain override: which specific leaf cert PEMs to pin (new model only)
   const mTlsDomainLeafOverride = new Map<string, string[]>();
@@ -3347,7 +3347,8 @@ async function buildCaddyDocumentFromDatabase() {
         }
       }
     } else if (meta.mtls.ca_certificate_ids?.length) {
-      // Legacy model: trust entire CAs (backward compat)
+      // CA model (ca_certificate_ids): trust every client certificate the chosen CAs sign.
+      // Imported CAs trust all of them; CAs with issued certs honour revocation.
       for (const domain of domains) {
         mTlsDomainMap.set(domain, meta.mtls.ca_certificate_ids);
       }

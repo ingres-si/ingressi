@@ -240,10 +240,13 @@ export function validateForm(form: HostForm, context: ValidationContext): FieldE
     const badHeader = [...splitList(form.forwardAuth.copyHeaders), ...splitList(form.forwardAuth.apiBypassHeaders)].find((name) => !HEADER_NAME.test(name));
     if (badHeader) errors["f-fa-headers"] = { message: `${badHeader} is not a header name.`, section: "access" };
   }
-  if (form.mtls.enabled && form.mtls.certIds.length === 0 && form.mtls.roleIds.length === 0 && form.mtls.legacyCaIds.length === 0) {
+  const mtlsTrust = form.mtls.trustMode === "ca" ? form.mtls.caIds.length : form.mtls.certIds.length + form.mtls.roleIds.length;
+  if (form.mtls.enabled && mtlsTrust === 0) {
     errors["f-mtls"] = {
       message: context.canChooseTrust
-        ? "Choose at least one role or client certificate, or turn client certificates off."
+        ? form.mtls.trustMode === "ca"
+          ? "Choose at least one certificate authority, or turn client certificates off."
+          : "Choose at least one role or client certificate, or turn client certificates off."
         : "Client certificates need a role or certificate that your role cannot choose. Turn them off or ask an administrator.",
       section: "access",
     };

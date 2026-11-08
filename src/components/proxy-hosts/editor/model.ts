@@ -172,8 +172,15 @@ export type MtlsForm = {
   roleIds: number[];
   protectedPaths: string;
   excludedPaths: string;
-  /** CA certificates trusted by the old model; kept as they are. */
-  legacyCaIds: number[];
+  /**
+   * What the host trusts: the chosen roles and client certificates ("identity"),
+   * or any client certificate signed by the chosen certificate authorities ("ca").
+   * Caddy pins either leaf certificates or whole CAs for a host, never both, so
+   * only the fields of the chosen mode are saved.
+   */
+  trustMode: "identity" | "ca";
+  /** Certificate authorities whose signed client certificates are all trusted ("ca" mode). */
+  caIds: number[];
 };
 
 export type PathBlockRow = { key: string; path: string; status: PathBlockStatusCode; body: string };
@@ -623,7 +630,12 @@ export function hostToForm(host: ProxyHost, context: FormContext = {}): HostForm
       roleIds: [...(mtls?.trusted_role_ids ?? [])],
       protectedPaths: mtls?.protected_paths?.join(", ") ?? "",
       excludedPaths: mtls?.excluded_paths?.join(", ") ?? "",
-      legacyCaIds: [...(mtls?.ca_certificate_ids ?? [])],
+      // Roles and certificates win over CAs when both are stored (that is what Caddy gets).
+      trustMode:
+        (mtls?.ca_certificate_ids?.length ?? 0) > 0 && !(mtls?.trusted_client_cert_ids?.length || mtls?.trusted_role_ids?.length)
+          ? "ca"
+          : "identity",
+      caIds: [...(mtls?.ca_certificate_ids ?? [])],
     },
     pathBlocks: host.pathBlocks.map((rule) => ({ key: rowKey("pb"), path: rule.path, status: rule.status, body: rule.body ?? "" })),
     pathAllows: host.pathAllows.map((rule) => ({ key: rowKey("pa"), path: rule.path })),
@@ -681,7 +693,7 @@ export function newHostForm(
     authentik: authentikForm(null, context.authentikDefaults),
     forwardAuth: genericForm(null, context.forwardAuthDefaults),
     ingressi: { protectedPaths: "", excludedPaths: "", bypassSources: "", userIds: [], groupIds: [] },
-    mtls: { enabled: false, certIds: [], roleIds: [], protectedPaths: "", excludedPaths: "", legacyCaIds: [] },
+    mtls: { enabled: false, certIds: [], roleIds: [], protectedPaths: "", excludedPaths: "", trustMode: "identity", caIds: [] },
     pathBlocks: [],
     pathAllows: [],
     certificateId: null,
@@ -716,7 +728,7 @@ export function copyHostForm(
     form.customReverseProxyJson = "";
   }
   if (!options.canChooseTrust) {
-    form.mtls = { enabled: false, certIds: [], roleIds: [], protectedPaths: "", excludedPaths: "", legacyCaIds: [] };
+    form.mtls = { enabled: false, certIds: [], roleIds: [], protectedPaths: "", excludedPaths: "", trustMode: "identity", caIds: [] };
   }
   return form;
 }
@@ -844,11 +856,11 @@ function mtlsInput(form: HostForm, base: ProxyHost | null) {
   if (!m.enabled) return base ? null : undefined;
   return {
     enabled: true,
-    trusted_client_cert_ids: [...m.certIds],
-    trusted_role_ids: [...m.roleIds],
+    trusted_client_cert_ids: m.trustMode === "ca" ? [] : [...m.certIds],
+    trusted_role_ids: m.trustMode === "ca" ? [] : [...m.roleIds],
     protected_paths: pathList(m.protectedPaths),
     excluded_paths: pathList(m.excludedPaths),
-    ...(m.legacyCaIds.length > 0 ? { ca_certificate_ids: [...m.legacyCaIds] } : {}),
+    ...(m.trustMode === "ca" && m.caIds.length > 0 ? { ca_certificate_ids: [...m.caIds] } : {}),
   };
 }
 

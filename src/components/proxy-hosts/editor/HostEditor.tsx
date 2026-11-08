@@ -200,6 +200,7 @@ export function HostEditor({ data: pageData, workspace }: { data: HostEditorData
       group: (id) => data.groups.find((group) => group.id === id)?.name ?? `#${id}`,
       role: (id) => data.mtlsRoles.find((role) => role.id === id)?.name ?? `#${id}`,
       clientCertificate: (id) => data.clientCertificates.find((certificate) => certificate.id === id)?.commonName ?? `#${id}`,
+      ca: (id) => data.caCertificates.find((ca) => ca.id === id)?.name ?? `CA #${id}`,
       globalWafMode: data.wafGlobal ? GLOBAL_WAF[data.wafGlobal.mode] : "blocking",
     }),
     [data]

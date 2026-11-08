@@ -80,6 +80,7 @@ const lookup: ChangeLookup = {
   group: (id) => `group${id}`,
   role: (id) => `role${id}`,
   clientCertificate: (id) => `cert${id}`,
+  ca: (id) => `ca${id}`,
   globalWafMode: 'blocking',
 };
 
@@ -92,6 +93,41 @@ describe('host editor payload', () => {
     const stored = host();
     const saved = hostToForm(stored);
     expect(payloadIsEmpty(buildPayload(saved, saved, stored, false))).toBe(true);
+  });
+
+  describe('mTLS trust by certificate authority', () => {
+    const withMtls = (mtls: unknown) => host({ mtls: mtls as never });
+
+    it('opens a host that trusts only CAs in CA mode', () => {
+      const form = hostToForm(withMtls({ enabled: true, ca_certificate_ids: [3] }));
+      expect(form.mtls).toMatchObject({ enabled: true, trustMode: 'ca', caIds: [3] });
+    });
+
+    it('keeps identity mode when roles or certificates are stored beside CAs', () => {
+      const form = hostToForm(withMtls({ enabled: true, trusted_role_ids: [1], ca_certificate_ids: [3] }));
+      expect(form.mtls.trustMode).toBe('identity');
+    });
+
+    it('saves only the CAs in CA mode and only roles/certificates in identity mode', () => {
+      const stored = host();
+      const saved = hostToForm(stored);
+      const ca = edited(saved, (f) => ({ ...f, mtls: { ...f.mtls, enabled: true, trustMode: 'ca', caIds: [3], roleIds: [1], certIds: [2] } }));
+      expect(buildPayload(ca, saved, stored, false).host.mtls).toMatchObject({
+        enabled: true, ca_certificate_ids: [3], trusted_role_ids: [], trusted_client_cert_ids: [],
+      });
+      const identity = edited(saved, (f) => ({ ...f, mtls: { ...f.mtls, enabled: true, trustMode: 'identity', caIds: [3], roleIds: [1] } }));
+      const sent = buildPayload(identity, saved, stored, false).host.mtls as Record<string, unknown>;
+      expect(sent.trusted_role_ids).toEqual([1]);
+      expect(sent).not.toHaveProperty('ca_certificate_ids');
+    });
+
+    it('requires an authority in CA mode, even when roles are still selected', () => {
+      const context = { nameSection: 'advanced' as const, dnsProviderConfigured: false, canChooseTrust: true };
+      const form = edited(hostToForm(host()), (f) => ({ ...f, mtls: { ...f.mtls, enabled: true, trustMode: 'ca', caIds: [], roleIds: [1] } }));
+      expect(validateForm(form, context)['f-mtls'].message).toContain('certificate authority');
+      const ok = edited(form, (f) => ({ ...f, mtls: { ...f.mtls, caIds: [3] } }));
+      expect(validateForm(ok, context)['f-mtls']).toBeUndefined();
+    });
   });
 
   it('sends only the top-level field that changed', () => {

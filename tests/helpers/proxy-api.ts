@@ -16,6 +16,8 @@ export interface ProxyHostConfig {
   accessListName?: string; // name of an existing access list to attach
   certificateName?: string;
   mtlsCaNames?: string[];
+  /** Trust every client certificate signed by these authorities (the "Certificate authority" mode). */
+  mtlsTrustedAuthorityNames?: string[];
   mtlsProtectedPaths?: string[];
   mtlsExcludedPaths?: string[];
   enableWaf?: boolean;     // enable WAF with OWASP CRS in blocking mode
@@ -234,9 +236,18 @@ export async function createProxyHost(page: Page, config: ProxyHostConfig): Prom
   if (config.certificateName) await selectOptionByText(page, 'Certificate', config.certificateName);
   await setEditorSwitch(page, 'Redirect HTTP to HTTPS', false);
 
-  if (config.accessListName || config.mtlsCaNames?.length) {
+  if (config.accessListName || config.mtlsCaNames?.length || config.mtlsTrustedAuthorityNames?.length) {
     await openEditorSection(page, 'Access');
     if (config.accessListName) await selectOptionByText(page, 'Access list', config.accessListName);
+    if (config.mtlsTrustedAuthorityNames?.length) {
+      await setEditorSwitch(page, 'Require client certificates', true);
+      const mtls = page.locator('#f-mtls');
+      await mtls.getByRole('group', { name: 'Trust' }).getByRole('button', { name: 'Certificate authority' }).click();
+      await expect(mtls.getByText('Trusted certificate authorities')).toBeVisible({ timeout: 10_000 });
+      for (const caName of config.mtlsTrustedAuthorityNames) {
+        await mtls.locator('#f-mtls-cas label').filter({ hasText: caName }).first().click();
+      }
+    }
     if (config.mtlsCaNames?.length) {
       await setEditorSwitch(page, 'Require client certificates', true);
       const mtls = page.locator('#f-mtls');
@@ -289,6 +300,18 @@ export async function importCertificate(page: Page, config: ImportedCertificateC
   await expect(page.getByRole('heading', { name: /^import certificate$/i })).not.toBeVisible({ timeout: 10_000 });
   await page.waitForTimeout(500); // allow page to revalidate
   await expect(page.locator('table').getByText(config.name).first()).toBeVisible({ timeout: 10_000 });
+}
+
+export async function importCaCertificate(page: Page, config: { name: string; certificatePem: string }): Promise<void> {
+  await openCertificatesTab(page, /^Certificate authorities/i);
+  await page.getByRole('button', { name: /^add certificate authority$/i }).first().click();
+  await expect(page.getByRole('heading', { name: /^add certificate authority$/i })).toBeVisible();
+  await page.getByRole('tab', { name: /^import pem$/i }).click();
+  await page.locator('#imp-name').fill(config.name);
+  await page.locator('#imp-cert-pem').fill(config.certificatePem);
+  await page.getByRole('button', { name: /^add certificate authority$/i }).last().click();
+  await expect(page.getByRole('heading', { name: /^add certificate authority$/i })).not.toBeVisible({ timeout: 10_000 });
+  await expect(page.locator('table').getByText(config.name).first()).toBeVisible({ timeout: 15_000 });
 }
 
 export async function generateCaCertificate(page: Page, config: GeneratedCaConfig): Promise<void> {
