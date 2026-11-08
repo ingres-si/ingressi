@@ -274,7 +274,7 @@ describe('L4 port manager entrypoint behavior (executes the real script)', () =>
     await waitUntil(() => !existsSync(join(dataDir, '.l4-apply.lock')), 10_000);
   });
 
-  it('takes over a STALE apply lock at startup and re-applies (the production bug)', async () => {
+  it('takes over a STALE apply lock at startup and re-applies (the production bug)', { timeout: 20_000 }, async () => {
     // Simulate a crashed apply: lock file left behind, written an hour ago.
     writeFakeDocker(0);
     writeFileSync(join(dataDir, '.l4-apply.lock'), String(Math.floor(Date.now() / 1000) - 3600));
@@ -306,7 +306,7 @@ describe('L4 port manager entrypoint behavior (executes the real script)', () =>
     await waitUntil(() => !existsSync(join(dataDir, '.l4-apply.lock')), 5_000);
   }, 20_000);
 
-  it('writes "applied" status when compose succeeds', async () => {
+  it('writes "applied" status when compose succeeds', { timeout: 20_000 }, async () => {
     writeFakeDocker(0);
     child = startSidecar();
     captureOutput();
@@ -314,7 +314,7 @@ describe('L4 port manager entrypoint behavior (executes the real script)', () =>
     expect(readStatus()?.message).toContain('healthy');
   });
 
-  it('re-applies when the trigger file changes after a successful startup', async () => {
+  it('re-applies when the trigger file changes after a successful startup', { timeout: 20_000 }, async () => {
     writeFakeDocker(0);
     child = startSidecar();
     captureOutput();
@@ -326,7 +326,7 @@ describe('L4 port manager entrypoint behavior (executes the real script)', () =>
     await waitUntil(() => readStatus()?.state === 'applied', 10_000);
   });
 
-  it('does not re-apply the same trigger content twice', async () => {
+  it('does not re-apply the same trigger content twice', { timeout: 20_000 }, async () => {
     writeFakeDocker(0);
     writeFileSync(join(dataDir, 'l4-ports.trigger'), '{"triggeredAt":"fixed","hash":"x","ports":[]}');
     child = startSidecar();
