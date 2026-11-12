@@ -2,6 +2,15 @@
 
 Pull the new images and recreate the containers with `docker compose pull && docker compose up -d`. (`docker compose restart` does not re-read `.env`.)
 
+## Upgrading to v2.11.0
+
+- **Trust client certificates by their certificate authority.** A proxy host's mTLS card has a new **Trust** switch: keep trusting individual roles and certificates, or trust a certificate authority and accept every client certificate it signs — an imported CA such as Cloudflare's origin pull CA, for example. The two modes are exclusive per host. REST: `ca_certificate_ids` in a host's mTLS settings. See [certificates.md](certificates.md#certificate-authorities).
+- **PowerDNS DNS-01 provider.** PowerDNS joins the DNS providers for the ACME DNS-01 challenge, used for certificates on internal names. See [certificates.md](certificates.md).
+- **`config:import` and `backups:restore` are administrator-only.** Each can replace or restore the whole configuration, so they are now administrator-level and are taken out of every custom role that held them, once, on the first start after upgrading. The server logs each role it changes. An administrator can grant either one again on the Users page, and it then stays; the other permissions on those roles are untouched.
+- **Changes Caddy rejects are undone, not left behind.** When Caddy refuses a saved change — a certificate it cannot read, a WAF rule that will not compile, an address it cannot bind — the change is rolled back instead of staying in the database and blocking every later apply. The message says the change was saved but is not live, and where Caddy stopped. Certificates and other values are also checked the way Caddy reads them before they are stored.
+- **Caddy 2.11.9** and dependency updates (the production and development dependency groups, and the Caddy image's base images).
+- No database migration.
+
 ## Upgrading to v2.10.0
 
 - **Access lists can skip Basic Auth for allowed addresses.** **Skip Basic Auth for allowed addresses** on a list (`skipAuthForAllowed` in the REST API) lets clients that match an Allow IP or CIDR rule in without a username and password; everyone else still signs in. Off by default. See [access-lists.md](access-lists.md#members-basic-auth).
