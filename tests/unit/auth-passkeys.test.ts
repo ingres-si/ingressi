@@ -167,8 +167,11 @@ describe('adding a passkey', () => {
     const account = await createAccount();
     const b = await signedIn(account.username);
     const res = await addPasskey(b, soft(false));
+    // The passkey plugin itself requires user verification (userVerification:
+    // "required" -> requireUserVerification), so a ceremony without it fails
+    // verification before our afterVerification guard can name the reason.
     expect(res.status).toBe(400);
-    expect(res.body).toMatchObject({ code: 'USER_VERIFICATION_REQUIRED' });
+    expect(res.body).toMatchObject({ code: 'FAILED_TO_VERIFY_REGISTRATION' });
     expect(await app.passkeys.countPasskeys(account.id)).toBe(0);
   });
 
@@ -246,7 +249,9 @@ describe('signing in with a passkey', () => {
     authenticator.userVerified = false;
     const before = await sessionCount(account.id);
     const res = await signInWithPasskey(authenticator);
-    expect(res.status).toBe(401);
+    // Likewise the assertion fails verification in the plugin (400) rather than
+    // reaching our afterVerification guard; either way no session is created.
+    expect(res.status).toBe(400);
     expect(await sessionCount(account.id)).toBe(before);
   });
 
