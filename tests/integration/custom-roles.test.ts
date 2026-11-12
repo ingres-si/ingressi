@@ -82,7 +82,8 @@ describe('roles and permissions endpoints', () => {
     const catalogue = await json(response);
     expect(catalogue.areas.flatMap((area: { permissions: string[] }) => area.permissions)).toEqual([...PERMISSIONS]);
     expect(catalogue.adminLevel.permissions).toContain('sso:write');
-    expect(catalogue.adminLevel.combinations).toEqual([['users:write', 'settings:write'], ['users:write', 'approvals:approve']]);
+    expect(catalogue.adminLevel.combinations).toEqual([['users:write', 'settings:write'], ['users:write', 'approvals:approve'], ['backups:write', 'backups:restore']]);
+    expect(catalogue.adminLevel.permissions).toContain('config:import');
     expect(catalogue.unscopedOnly).toContain('config:export');
     expect((await permissionsRoute.GET(apiRequest('GET', '/api/v1/permissions', tokens.member))).status).toBe(403);
   });

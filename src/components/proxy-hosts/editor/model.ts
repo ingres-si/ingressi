@@ -30,7 +30,13 @@ import { hostModeOf, withHostMode, type WafHostMode } from "@/lib/waf-host-mode"
 // ── Constants ─────────────────────────────────────────────────────────
 
 export const SCHEMES = ["http://", "https://"] as const;
-export type Scheme = (typeof SCHEMES)[number];
+/**
+ * "" is an upstream kept as it is written: one that is not scheme plus
+ * host:port (a unix socket, a Caddy placeholder, a name without a port), which
+ * a scheme in front would turn into another address.
+ */
+export const AS_WRITTEN = "";
+export type Scheme = (typeof SCHEMES)[number] | typeof AS_WRITTEN;
 
 export const LB_POLICIES: { value: LoadBalancingPolicy; label: string; description: string }[] = [
   { value: "random", label: "Random", description: "Picks any healthy upstream at random." },
@@ -281,10 +287,14 @@ function integer(value: string): number | null {
 
 const numText = (value: number | null | undefined): string => (typeof value === "number" ? String(value) : "");
 
+/** host:port or [IPv6]:port. Caddy dials it the same with "http://" in front, so the form shows it with that scheme. */
+const HOST_AND_PORT = /^(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9._-]+):\d{1,5}$/;
+
 export function parseUpstream(upstream: string): { scheme: Scheme; address: string } {
   if (upstream.startsWith("https://")) return { scheme: "https://", address: upstream.slice(8) };
   if (upstream.startsWith("http://")) return { scheme: "http://", address: upstream.slice(7) };
-  return { scheme: "http://", address: upstream };
+  if (HOST_AND_PORT.test(upstream.trim())) return { scheme: "http://", address: upstream };
+  return { scheme: AS_WRITTEN, address: upstream };
 }
 
 export function upstreamRows(upstreams: readonly string[]): UpstreamRow[] {
@@ -713,12 +723,12 @@ export function newHostForm(
 
 /**
  * The starting form of a copy of `template`: everything but the name (which
- * gets " (copy)"); custom Caddy JSON and client certificate trust only when
- * the user may set them.
+ * gets " (copy)"); custom Caddy JSON, custom WAF directives and client
+ * certificate trust only when the user may set them.
  */
 export function copyHostForm(
   template: ProxyHost,
-  options: { canSetCustomJson: boolean; canChooseTrust: boolean },
+  options: { canSetCustomJson: boolean; canChooseTrust: boolean; canSetWafDirectives?: boolean },
   context: FormContext = {}
 ): HostForm {
   const form = hostToForm(template, { ...context, forwardAuthAccess: null });
@@ -727,6 +737,8 @@ export function copyHostForm(
     form.customPreHandlersJson = "";
     form.customReverseProxyJson = "";
   }
+  // Custom WAF directives need waf:write (assertProxyHostWriteAllowed).
+  if (options.canSetWafDirectives === false) form.wafDirectives = "";
   if (!options.canChooseTrust) {
     form.mtls = { enabled: false, certIds: [], roleIds: [], protectedPaths: "", excludedPaths: "", trustMode: "identity", caIds: [] };
   }

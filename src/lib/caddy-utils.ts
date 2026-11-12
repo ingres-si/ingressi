@@ -187,6 +187,54 @@ export function parseUpstreamTarget(upstream: string): ParsedUpstreamTarget {
   };
 }
 
+/** The dial address of the Authentik outpost route (the outpost's own paths). */
+export function authentikOutpostDial(upstream: string): string {
+  try {
+    const url = new URL(upstream);
+    const port = url.port || (url.protocol === "https:" ? "443" : "80");
+    return `${url.hostname}:${port}`;
+  } catch {
+    return upstream.replace(/^https?:\/\//, "").replace(/\/$/, "");
+  }
+}
+
+/** The dial address of the Authentik forward-auth subrequest. */
+export function authentikAuthDial(upstream: string): string {
+  return upstream.replace(/^https?:\/\//, "").replace(/\/$/, "").split("/")[0];
+}
+
+/** The dial address of a generic forward-auth server, or null when it is not an http(s) URL. */
+export function forwardAuthDial(upstream: string): string | null {
+  try {
+    const url = new URL(upstream);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    const port = url.port || (url.protocol === "https:" ? "443" : "80");
+    return `${url.hostname}:${port}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The port of a Caddy dial address as Caddy splits it: an optional network
+ * prefix ("tcp/", "udp/", "unix/"), then host:port with an IPv6 host in
+ * brackets. The port comes back as written, so a range ("2019-2019") or a
+ * placeholder stays visible. Null when the address names no port.
+ */
+export function dialAddressPort(dial: string): string | null {
+  let address = dial.trim();
+  const slash = address.indexOf("/");
+  if (slash !== -1) address = address.slice(slash + 1);
+  if (address.startsWith("[")) {
+    const close = address.indexOf("]");
+    if (close === -1) return null;
+    const rest = address.slice(close + 1);
+    return rest.startsWith(":") ? rest.slice(1) : null;
+  }
+  const colon = address.lastIndexOf(":");
+  return colon === -1 ? null : address.slice(colon + 1);
+}
+
 // ---------------------------------------------------------------------------
 // Duration parsing
 // ---------------------------------------------------------------------------

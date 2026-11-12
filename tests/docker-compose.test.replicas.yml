@@ -21,6 +21,7 @@ x-replica-environment: &replica-environment
   NODE_ENV: production
   SESSION_SECRET: "test-session-secret-32chars!xxxY"
   CADDY_API_URL: http://caddy:2019
+  CADDY_ADMIN_SOCKET: /run/caddy-admin/admin.sock
   BASE_URL: http://localhost:3000
   NEXTAUTH_URL: http://localhost:3000
   DATABASE_PATH: /app/data/ingressi.db
@@ -57,6 +58,7 @@ x-replica: &replica
     - geoip-data:/usr/share/GeoIP:ro,z
     - caddy-logs:/logs
     - acme-ca:/acme-ca
+    - caddy-admin:/run/caddy-admin
   depends_on:
     postgres:
       condition: service_healthy

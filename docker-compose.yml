@@ -26,8 +26,12 @@ services:
       # stored secrets after a rotation (see .env.example)
       SESSION_SECRET_PREVIOUS: ${SESSION_SECRET_PREVIOUS:-}
 
-      # Caddy API endpoint (internal communication)
+      # Caddy API endpoint (internal communication). The hostname identifies the
+      # Caddy service; the admin API itself is reached over CADDY_ADMIN_SOCKET.
       CADDY_API_URL: ${CADDY_API_URL:-http://caddy:2019}
+      # Unix socket for the Caddy admin API (shared volume with the caddy
+      # service). Leave empty to reach the admin API over CADDY_API_URL's TCP port.
+      CADDY_ADMIN_SOCKET: ${CADDY_ADMIN_SOCKET-/run/caddy-admin/admin.sock}
 
       # Public base URL for the application
       BASE_URL: ${BASE_URL:-http://localhost:3000}
@@ -111,6 +115,10 @@ services:
       - caddy-logs:/logs
       # Custom ACME CA root PEM written here by web, read by caddy (issue #192)
       - acme-ca:/acme-ca
+      # Caddy admin API unix socket (created by caddy; reached via the shared
+      # caddy GID group_add above). web only connects to the socket; the dir is
+      # caddy-owned so web cannot create files here.
+      - caddy-admin:/run/caddy-admin
     depends_on:
       caddy:
         condition: service_healthy
@@ -152,9 +160,16 @@ services:
     environment:
       # Primary domain for Caddy configuration
       PRIMARY_DOMAIN: ${PRIMARY_DOMAIN:-ingressi.localhost}
+      # Admin API over a unix socket (no TCP admin port for in-container proxied
+      # traffic to dial). The web service sets the same listener with every
+      # apply (CADDY_ADMIN_SOCKET), so the two must agree. To use the TCP port
+      # instead, set this to 0.0.0.0:2019 and CADDY_ADMIN_SOCKET to empty.
+      CADDY_ADMIN_LISTEN: ${CADDY_ADMIN_LISTEN:-unix//run/caddy-admin/admin.sock|0660}
     volumes:
       - caddy-data:/data
       - caddy-config:/config
+      # Admin API unix socket, shared with the web container (CADDY_ADMIN_SOCKET).
+      - caddy-admin:/run/caddy-admin
       # If you override this named volume with a bind mount, the host dir
       # MUST be readable and writable by caddy's UID/GID: Caddy's log roller
       # (timberjack) lists the directory to gzip and prune old rolled files.
@@ -168,7 +183,11 @@ services:
     networks:
       - caddy-network
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "-O", "/dev/null", "http://localhost:2019/config/"]
+      # Caddy listens on the admin socket (a socket file left behind by an
+      # earlier container is not listed in /proc/net/unix), or answers on the
+      # TCP port while it still runs a configuration saved before the socket
+      # was set up (the web service moves it to the socket with its first apply).
+      test: ["CMD-SHELL", "grep -q /run/caddy-admin/admin.sock /proc/net/unix || wget --quiet --tries=1 -O /dev/null http://localhost:2019/config/"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -312,3 +331,5 @@ volumes:
   geoip-data:
   clickhouse-data:
   acme-ca:
+  # Holds the Caddy admin API unix socket, shared between caddy and web.
+  caddy-admin:

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { createSelfSignedServerCertificate } from '../helpers/certs';
+import { createExternalCa, createSelfSignedServerCertificate, issueExternalClientCertificate } from '../helpers/certs';
 import { escapeRegExp } from '../helpers/text';
 
 test.describe('Certificates', () => {
@@ -329,9 +329,10 @@ test.describe('Certificates', () => {
   });
 });
 
-// Placeholder PEMs: the CAs and certificates below are never attached to a
-// host, so they never reach the Caddy configuration.
-const FAKE_PEM = '-----BEGIN CERTIFICATE-----\nMIIBfake\n-----END CERTIFICATE-----';
+// One real CA certificate and one real client certificate for every row below: the API refuses
+// what Caddy could not load, and the list only shows the names, serials and dates given with them.
+const LIST_CA = createExternalCa('E2E list CA');
+const LIST_CLIENT_PEM = issueExternalClientCertificate(LIST_CA, 'e2e-list-device').certificatePem;
 const DAY_MS = 86_400_000;
 
 test.describe('Issued client certificates list', () => {
@@ -348,7 +349,7 @@ test.describe('Issued client certificates list', () => {
     const serial = (i: number) => `${run}${String(i).padStart(2, '0')}`;
 
     const createCa = async (caName: string) => {
-      const res = await page.request.post(`${API}/ca-certificates`, { data: { name: caName, certificatePem: FAKE_PEM }, headers });
+      const res = await page.request.post(`${API}/ca-certificates`, { data: { name: caName, certificatePem: LIST_CA.certificatePem }, headers });
       expect(res.status()).toBe(201);
       return (await res.json()) as { id: number };
     };
@@ -364,8 +365,7 @@ test.describe('Issued client certificates list', () => {
         caCertificateId: i < 60 ? mainCa.id : otherCa.id,
         commonName: name(i),
         serialNumber: serial(i),
-        fingerprintSha256: `AA:BB:${String(i).padStart(2, '0')}`,
-        certificatePem: FAKE_PEM,
+        certificatePem: LIST_CLIENT_PEM,
         validFrom: new Date(now - 30 * DAY_MS).toISOString(),
         validTo: new Date(now + (i < 3 ? -(i + 1) : i < 8 ? 10 + i : 365 + i) * DAY_MS).toISOString(),
       }));

@@ -20,6 +20,7 @@ vi.mock('@/src/lib/api-auth', () => {
       }
       return NR.json({ error: error instanceof Error ? error.message : 'Internal server error' }, { status: 500 });
     }),
+    logUnexpectedApiError: vi.fn(() => 'error-id'),
     ApiAuthError,
   };
 });
@@ -53,6 +54,19 @@ describe('POST /api/v1/caddy/apply', () => {
     expect(response.status).toBe(200);
     expect(data).toEqual({ ok: true });
     expect(mockApplyCaddyConfig).toHaveBeenCalled();
+  });
+
+  it('answers 502 with why when Caddy does not take the configuration, without claiming anything was saved', async () => {
+    const { CaddyApplyError } = await import('@/src/lib/caddy-apply-error');
+    const rejection = new CaddyApplyError('Caddy rejected configuration: the problem is in the geoblocking rules', 'CADDY_REJECTED');
+    rejection.rejectedAt = 'proxy host a.example.com';
+    mockApplyCaddyConfig.mockRejectedValueOnce(rejection);
+    const response = await POST(createMockRequest());
+    expect(response.status).toBe(502);
+    expect(await response.json()).toEqual({
+      error: 'Caddy rejected configuration: the problem is in the geoblocking rules (proxy host a.example.com)',
+      code: 'CADDY_REJECTED',
+    });
   });
 
   it('returns 401 on auth failure', async () => {

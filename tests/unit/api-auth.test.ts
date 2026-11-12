@@ -18,6 +18,7 @@ vi.mock('@/src/lib/mfa', () => ({
 
 import { authenticateApiRequest, requireApiUser, requireApiAdmin, ApiAuthError, NotFoundError, apiErrorResponse } from '@/src/lib/api-auth';
 import { ApiClientError, ApiConflictError, ApiValidationError } from '@/src/lib/api-errors';
+import { CaddyApplyError } from '@/src/lib/caddy-apply-error';
 import { validateToken } from '@/src/lib/models/api-tokens';
 import { auth, checkSameOrigin } from '@/src/lib/auth';
 import { mfaEnrolmentRequired } from '@/src/lib/mfa';
@@ -229,6 +230,34 @@ describe('apiErrorResponse', () => {
     const response = apiErrorResponse(error);
     expect(response.status).toBe(status);
     expect(await response.json()).toEqual({ error: error.message });
+  });
+
+  it('answers 502 for a change that is stored but not live, and says it was saved', async () => {
+    const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const rejected = Object.assign(new CaddyApplyError('Caddy rejected configuration: the problem is in the WAF rules (proxy host a.example.com)', 'CADDY_REJECTED'), { proxyHostId: 12 });
+    const response = apiErrorResponse(rejected);
+    expect(response.status).toBe(502);
+    expect(await response.json()).toEqual({
+      error:
+        'Saved, but not live yet: Caddy rejected configuration: the problem is in the WAF rules (proxy host a.example.com). ' +
+        'Caddy keeps serving its previous configuration until an apply succeeds.',
+      code: 'CADDY_REJECTED',
+      saved: true,
+      id: 12,
+    });
+
+    const unreachable = await apiErrorResponse(Object.assign(new CaddyApplyError('Unable to reach Caddy API', 'CADDY_UNREACHABLE'), { l4ProxyHostId: 4 })).json();
+    expect(unreachable).toMatchObject({ code: 'CADDY_UNREACHABLE', saved: true, id: 4 });
+    expect(unreachable.error).toMatch(/^Saved, but not live yet: Unable to reach Caddy API\./);
+
+    const sync = apiErrorResponse(new CaddyApplyError('Caddy configuration applied but instance synchronization failed', 'INSTANCE_SYNC_FAILED'));
+    expect(sync.status).toBe(502);
+    expect(await sync.json()).toEqual({
+      error: 'Saved and applied on this instance, but not on every instance: Caddy configuration applied but instance synchronization failed.',
+      code: 'INSTANCE_SYNC_FAILED',
+      saved: true,
+    });
+    consoleSpy.mockRestore();
   });
 
   it('prevents client-safe errors from being used to expose 5xx failures', () => {

@@ -1,8 +1,11 @@
 {
-	# Bound to 0.0.0.0 within the Docker network so the web container can reach it.
-	# Port 2019 must NOT be published to the host in docker-compose.yml.
-	# The origins directive restricts which Host header values are accepted.
-	admin 0.0.0.0:2019 {
+	# Admin API listen address, overridable via CADDY_ADMIN_LISTEN. Default is
+	# the TCP port on the internal Docker network (never published to the host).
+	# The recommended value is a unix socket (e.g. unix//run/caddy-admin/admin.sock|0660),
+	# so no admin API listens on a port that proxied traffic in this container could dial.
+	# The web container reaches it over the same socket (CADDY_ADMIN_SOCKET).
+	# The origins directive restricts Host header values on a TCP listener (ignored for a socket).
+	admin {$CADDY_ADMIN_LISTEN:0.0.0.0:2019} {
 		origins caddy:2019 localhost:2019 localhost
 	}
 }

@@ -29,6 +29,7 @@
  * Domains: func-pp-<kind>.test
  */
 import { execFileSync } from 'node:child_process';
+import { caddyAdminGet } from '../../helpers/live-caddy';
 import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { test, expect, request as playwrightRequest, type APIRequestContext } from '@playwright/test';
@@ -95,11 +96,7 @@ async function eventually(check: () => Promise<void> | void, timeoutMs = 30_000)
 /** The listener wrappers of the main server in the running Caddy (null when it has none). */
 function liveListenerWrappers(): Array<Record<string, unknown>> | null {
   try {
-    const out = execFileSync(
-      'docker',
-      ['exec', 'ingressi-caddy', 'wget', '-qO-', 'http://localhost:2019/config/apps/http/servers/ingressi/listener_wrappers'],
-      { encoding: 'utf-8', timeout: 10_000, stdio: ['ignore', 'pipe', 'ignore'] }
-    );
+    const out = caddyAdminGet('/config/apps/http/servers/ingressi/listener_wrappers');
     return JSON.parse(out) as Array<Record<string, unknown>> | null;
   } catch {
     return null;

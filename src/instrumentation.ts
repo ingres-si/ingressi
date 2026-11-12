@@ -30,6 +30,19 @@ async function runStartupDatabaseTasks() {
     // Don't throw - let the app start anyway, errors will surface when users try to use features
   }
 
+  // Permissions that became administrator-level leave the roles that already held them, once.
+  try {
+    const { removeReclassifiedPermissions } = await import("../ee/custom-roles/reclassified");
+    for (const role of await removeReclassifiedPermissions()) {
+      console.warn(
+        `Removed ${role.removed.join(", ")} from custom role ${JSON.stringify(role.name)}: it is administrator-level ` +
+          "from this release on; an administrator can grant it again on the Users page"
+      );
+    }
+  } catch (error) {
+    console.error("Failed to review custom roles for administrator-level permissions:", error);
+  }
+
   // Only reports: stored usernames are never changed on startup.
   const { findSignInUsernamesToReview } = await import("./lib/models/user");
   try {

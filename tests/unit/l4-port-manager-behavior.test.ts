@@ -64,13 +64,13 @@ function setupEnv(): void {
  * project-label inspection returns a fixed project name; health checks
  * ("inspect") report healthy.
  */
-function writeFakeDocker(composeUpExit: number): void {
+function writeFakeDocker(composeUpExit: number, composeUpSeconds = 0.2): void {
   writeFileSync(
     join(fakeBinDir, 'docker'),
     `#!/bin/sh
 echo "$@" >> "${fakeDockerLogPath}"
 if echo "$@" | grep -q -- "--force-recreate caddy"; then
-  sleep 0.2
+  sleep ${composeUpSeconds}
   exit ${composeUpExit}
 fi
 if echo "$@" | grep -q "compose.project"; then
@@ -324,6 +324,39 @@ describe('L4 port manager entrypoint behavior (executes the real script)', () =>
     triggerApply();
     await waitUntil(() => composeUpInvocations() > before, 10_000);
     await waitUntil(() => readStatus()?.state === 'applied', 10_000);
+  });
+
+  it('applies a trigger written while the startup apply is running', { timeout: 30_000 }, async () => {
+    // The override changes while compose is recreating caddy: that apply may not
+    // have seen it, so the trigger must survive it and be applied by the poll loop.
+    writeFakeDocker(0, 2);
+    child = startSidecar();
+    captureOutput();
+    await waitUntil(() => composeUpInvocations() === 1, 10_000);
+    triggerApply();
+    await waitUntil(() => composeUpInvocations() === 2, 15_000);
+    await waitUntil(() => readStatus()?.state === 'applied' && !existsSync(join(dataDir, 'l4-ports.trigger')), 10_000);
+    // Applied once, and the trigger is gone: nothing left to apply again.
+    await new Promise((r) => setTimeout(r, 2500));
+    expect(composeUpInvocations()).toBe(2);
+  });
+
+  it('applies a trigger written while the apply of an earlier trigger is running', { timeout: 30_000 }, async () => {
+    writeFakeDocker(0, 2);
+    writeFileSync(join(dataDir, 'docker-compose.l4-ports.yml'), 'services: {}\n');
+    child = startSidecar();
+    captureOutput();
+    await waitUntil(() => readStatus()?.state === 'applied' && output.includes('Watching'), 15_000);
+    const startup = composeUpInvocations();
+
+    triggerApply();
+    await waitUntil(() => composeUpInvocations() === startup + 1, 10_000);
+    // A second, different trigger while the first is being applied.
+    writeFileSync(join(dataDir, 'l4-ports.trigger'), JSON.stringify({ triggeredAt: 'later', hash: 'second', ports: ['1234:1234', '5678:5678'] }));
+    await waitUntil(() => composeUpInvocations() === startup + 2, 15_000);
+    await waitUntil(() => readStatus()?.state === 'applied' && !existsSync(join(dataDir, 'l4-ports.trigger')), 10_000);
+    // The answered trigger is moved aside and then deleted: wait for the deletion.
+    await waitUntil(() => !existsSync(join(dataDir, 'l4-ports.trigger.done')), 5_000);
   });
 
   it('does not re-apply the same trigger content twice', { timeout: 20_000 }, async () => {

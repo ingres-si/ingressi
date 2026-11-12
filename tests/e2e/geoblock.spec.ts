@@ -36,7 +36,9 @@ function cidrInput(parent: ReturnType<typeof test['info']> extends never ? never
 
 test.describe('Geo Blocking — form persistence', () => {
   async function resetGeoblock(page: any) {
-    await page.request.put(API_GEOBLOCK, { data: EMPTY_GEOBLOCK });
+    // A change made with the session cookie must come from the dashboard's own origin.
+    const res = await page.request.put(API_GEOBLOCK, { data: EMPTY_GEOBLOCK, headers: { Origin: 'http://localhost:3000' } });
+    expect(res.status(), await res.text()).toBe(200);
   }
 
   test.beforeEach(async ({ page }) => {
@@ -76,7 +78,7 @@ test.describe('Geo Blocking — form persistence', () => {
     await expect(geoSection.locator(`text=${SAFE_BLOCK_CIDR}`)).toBeVisible();
 
     await geoSection.getByRole('button', { name: 'Save changes' }).click();
-    await expect(geoSection.getByText(/saved|success/i).first()).toBeVisible({ timeout: 10000 });
+    await expect(geoSection.getByText(/saved and applied successfully/i)).toBeVisible({ timeout: 10000 });
 
     await page.reload();
     const fresh = geoPane(page);
@@ -108,7 +110,7 @@ test.describe('Geo Blocking — form persistence', () => {
     await expect(geoSection.locator(`text=${SAFE_ALLOW_CIDR_2}`)).toBeVisible();
 
     await geoSection.getByRole('button', { name: 'Save changes' }).click();
-    await expect(geoSection.getByText(/saved|success/i).first()).toBeVisible({ timeout: 10000 });
+    await expect(geoSection.getByText(/saved and applied successfully/i)).toBeVisible({ timeout: 10000 });
 
     await page.reload();
     const fresh = geoPane(page);
@@ -140,7 +142,7 @@ test.describe('Geo Blocking — form persistence', () => {
     await geoSection.getByRole('button', { name: /trusted proxies/i }).click();
 
     await geoSection.getByRole('button', { name: 'Save changes' }).click();
-    await expect(geoSection.getByText(/saved|success/i).first()).toBeVisible({ timeout: 10000 });
+    await expect(geoSection.getByText(/saved and applied successfully/i)).toBeVisible({ timeout: 10000 });
 
     await page.reload();
     const fresh = geoPane(page);
@@ -172,7 +174,7 @@ test.describe('Geo Blocking — form persistence', () => {
     await statusInput.fill('418');
 
     await geoSection.getByRole('button', { name: 'Save changes' }).click();
-    await expect(geoSection.getByText(/saved|success/i).first()).toBeVisible({ timeout: 10000 });
+    await expect(geoSection.getByText(/saved and applied successfully/i)).toBeVisible({ timeout: 10000 });
 
     // No page.reload() here — the visible form must already reflect the save.
     await expect(geoSection.locator('input[name="geoblockRedirectUrl"]'))
@@ -222,7 +224,8 @@ test.describe('Geo Blocking — form persistence', () => {
 
     await geoSection.getByRole('button', { name: /lan only/i }).click();
     await geoSection.getByRole('button', { name: 'Save changes' }).click();
-    await expect(geoSection.getByText(/saved|success/i).first()).toBeVisible({ timeout: 10000 });
+    // The save bar's answer, not its "unsaved changes" count from before the save.
+    await expect(geoSection.getByText(/saved and applied successfully/i)).toBeVisible({ timeout: 10000 });
 
     // Read saved values via API, then immediately reset to stop blocking traffic
     const res = await page.request.get(API_GEOBLOCK);

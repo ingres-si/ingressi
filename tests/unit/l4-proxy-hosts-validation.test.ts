@@ -215,6 +215,28 @@ describe('L4 proxy host create validation', () => {
     await expect(createL4ProxyHost(input, 1)).rejects.toThrow("must be in 'host:port' format");
   });
 
+  it.each(['10.0.0.1:67555', '10.0.0.1:0', '10.0.0.1:5432-5433', '10.0.0.1:', '10.0.0.1: 5432', '[::1]:x'])(
+    'rejects upstream %s, whose port Caddy would refuse when loading the configuration',
+    async (upstream) => {
+      const input: L4ProxyHostInput = { name: 'Test', protocol: 'tcp', listenAddress: ':5432', upstreams: [upstream] };
+      await expect(createL4ProxyHost(input, 1)).rejects.toThrow('must end in a port between 1 and 65535');
+    }
+  );
+
+  it.each([
+    { load_balancer: { enabled: true, try_duration: 'banana' } },
+    { load_balancer: { enabled: true, active_health_check: { enabled: true, port: 1.5 } } },
+    { geoblock: { enabled: true, block_cidrs: ['not-a-cidr'] } },
+  ])('checks a raw meta object like the fields it stands for: %j', async (meta) => {
+    const input = { name: 'Test', protocol: 'tcp', listenAddress: ':5432', upstreams: ['10.0.0.1:5432'], meta } as unknown as L4ProxyHostInput;
+    await expect(createL4ProxyHost(input, 1)).rejects.toThrow();
+  });
+
+  it.each(['10.0.0.1:5432', '[::1]:5432', 'db.internal:65535', 'udp/10.0.0.1:53'])('accepts upstream %s', async (upstream) => {
+    const input: L4ProxyHostInput = { name: 'Test', protocol: 'tcp', listenAddress: ':5432', upstreams: [upstream] };
+    await expect(createL4ProxyHost(input, 1)).resolves.toBeTruthy();
+  });
+
   it('rejects TLS termination with UDP', async () => {
     const input: L4ProxyHostInput = {
       name: 'Test',

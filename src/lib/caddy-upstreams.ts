@@ -25,7 +25,14 @@ function getJson(url: string): Promise<unknown> {
     const parsed = new URL(url);
     const lib = parsed.protocol === "https:" ? https : http;
     const request = lib.request(
-      { hostname: parsed.hostname, port: parsed.port, path: parsed.pathname + parsed.search, method: "GET", timeout: TIMEOUT_MS },
+      {
+        ...(config.caddyAdminSocket
+          ? { socketPath: config.caddyAdminSocket, headers: { Host: "localhost" } }
+          : { hostname: parsed.hostname, port: parsed.port }),
+        path: parsed.pathname + parsed.search,
+        method: "GET",
+        timeout: TIMEOUT_MS,
+      },
       (response) => {
         let size = 0;
         const chunks: Buffer[] = [];

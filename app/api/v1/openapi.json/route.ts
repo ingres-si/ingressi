@@ -65,7 +65,12 @@ const spec = {
       "(GET /api/v1/permissions; the endpoint-to-permission table is in ee/docs/custom-roles.md). The built-in admin role " +
       "holds every permission; the built-in user and viewer roles hold none of them; a custom role holds the permissions it " +
       "lists, and for proxy hosts, L4 proxy hosts and certificates can be limited to hosts carrying one of its tags. " +
-      "An API token acts with its owner's current role, custom role included. A missing permission answers 403.",
+      "An API token acts with its owner's current role, custom role included. A missing permission answers 403. " +
+      "Every change is applied to Caddy before the answer. A change that makes Caddy reject the configuration is taken back " +
+      "and answers 400 (409 when Caddy was already rejecting the configuration and the caller is not an administrator). " +
+      "A change that is stored but not live answers 502 with {error, code, saved: true} and, for a new proxy host or L4 host, its id: " +
+      "Caddy could not be reached, an administrator changed something while Caddy was already rejecting the configuration, " +
+      "or a replica was not synced. It goes live with the next successful apply (POST /api/v1/caddy/apply).",
   },
   servers: [{ url: "/" }],
   security: [{ bearerAuth: [] }, { sessionAuth: [] }],
@@ -3868,8 +3873,15 @@ const spec = {
             required: ["provider"],
             additionalProperties: false,
           },
-          certificatePem: { type: ["string", "null"] },
-          privateKeyPem: { type: ["string", "null"], writeOnly: true },
+          certificatePem: {
+            type: ["string", "null"],
+            description: "Imported type only: the certificate in PEM, optionally followed by its chain. 400 when it cannot be read.",
+          },
+          privateKeyPem: {
+            type: ["string", "null"],
+            writeOnly: true,
+            description: "Imported type only: the unencrypted RSA, ECDSA or Ed25519 key of the first certificate, in PEM. 400 when it cannot be read or does not belong to the certificate.",
+          },
         },
         required: ["name", "type", "domainNames"],
       },
@@ -3889,8 +3901,8 @@ const spec = {
         type: "object",
         properties: {
           name: { type: "string", example: "Internal CA" },
-          certificatePem: { type: "string", description: "PEM-encoded CA certificate" },
-          privateKeyPem: { type: "string", description: "PEM-encoded private key (optional, needed for issuing client certs)" },
+          certificatePem: { type: "string", description: "The CA certificate: exactly one PEM certificate. 400 otherwise." },
+          privateKeyPem: { type: "string", description: "PEM-encoded private key (optional, needed for issuing client certs); it must belong to the certificate" },
         },
         required: ["name", "certificatePem"],
       },
@@ -3913,17 +3925,17 @@ const spec = {
       },
       ClientCertificateInput: {
         type: "object",
-        description: "Store a pre-issued client certificate. All PEM/serial/fingerprint/validity fields must be provided.",
+        description: "Store a pre-issued client certificate: exactly one PEM certificate, with its serial number and validity. The fingerprint is computed from the certificate.",
         properties: {
           caCertificateId: { type: "integer", description: "ID of the CA certificate this cert was issued from" },
           commonName: { type: "string", example: "client-device-01" },
           serialNumber: { type: "string" },
-          fingerprintSha256: { type: "string" },
+          fingerprintSha256: { type: "string", description: "Optional: the certificate's SHA-256 fingerprint. It is computed from certificatePem; a value that is another fingerprint is refused (400)." },
           certificatePem: { type: "string" },
           validFrom: { type: "string", format: "date-time" },
           validTo: { type: "string", format: "date-time" },
         },
-        required: ["caCertificateId", "commonName", "serialNumber", "fingerprintSha256", "certificatePem", "validFrom", "validTo"],
+        required: ["caCertificateId", "commonName", "serialNumber", "certificatePem", "validFrom", "validTo"],
       },
 
       // ── Settings schemas ────────────────────────────────────────

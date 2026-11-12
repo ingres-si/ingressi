@@ -3,6 +3,7 @@ import { auth, checkSameOrigin } from "./auth";
 import { validateToken } from "./models/api-tokens";
 import { randomUUID } from "node:crypto";
 import { ApiClientError } from "./api-errors";
+import { CaddyApplyError } from "./caddy-apply-error";
 import { mfaEnrolmentRequired } from "./mfa";
 import { can, permissionDeniedMessage, type Access, type Permission } from "./permissions";
 import { applyTokenScopes } from "./api-token-scopes";
@@ -184,6 +185,27 @@ export function apiErrorResponse(error: unknown): NextResponse {
   }
   if (error instanceof NotFoundError) {
     return NextResponse.json({ error: error.message }, { status: 404 });
+  }
+  // The change is stored, but Caddy does not serve it (it refused the
+  // configuration, could not be reached, or the replicas were not synced).
+  // The models take a change Caddy rejects back themselves and answer 400 or
+  // 409 (rejected-apply.ts); what arrives here is what was kept. The message
+  // is written by the application (caddy-apply-error.ts).
+  if (error instanceof CaddyApplyError) {
+    logUnexpectedApiError("Change stored but not applied", error);
+    const id = error.proxyHostId ?? error.l4ProxyHostId;
+    return NextResponse.json(
+      {
+        error:
+          error.code === "INSTANCE_SYNC_FAILED"
+            ? `Saved and applied on this instance, but not on every instance: ${error.message}.`
+            : `Saved, but not live yet: ${error.message}. Caddy keeps serving its previous configuration until an apply succeeds.`,
+        code: error.code,
+        saved: true,
+        ...(id !== undefined ? { id } : {}),
+      },
+      { status: 502 }
+    );
   }
   // Several model functions predate NotFoundError and use a fixed
   // "<resource> not found" message. Preserve their 404 contract without

@@ -16,6 +16,7 @@ import { isDeepStrictEqual } from "node:util";
 import { type GeoBlockSettings, type WafSettings, getDnsProviderSettings, getWafSettings } from "../settings";
 import { normalizeProxyHostDomains } from "../proxy-host-domains";
 import { ApiValidationError } from "../api-errors";
+import { validateProxyHostCaddyScalars } from "../caddy-input-validation";
 import { normalizeBypassSources, readBypassSources } from "../sign-in-bypass";
 import { brandName } from "@/ee/white-label/store";
 import { bodyLimitRangeMessage, customDirectivesError, isValidBodyLimit, wafDirectiveSource } from "../caddy-waf";
@@ -25,10 +26,17 @@ import { assertProxyHostAuthCompatible, forgetDeletedProxyHost } from "@/ee/mone
 import { assertHostCreateApproved, assertHostDeleteApproved, assertHostUpdateApproved } from "@/ee/approvals/guard";
 import { normalizeProxyHostRateLimit, readStoredHostRateLimit } from "../caddy-rate-limit";
 import type { ProxyHostRateLimit, RateLimitMode, RateLimitRule } from "../rate-limit-rules";
-import { deleteWafExclusionsForHost, replaceWholeScopeExclusions, syncWafExclusionMirror } from "./waf-exclusion-mirror";
+import {
+  deleteWafExclusionsForHost,
+  readHostWafExclusionRows,
+  replaceWholeScopeExclusions,
+  restoreHostWafExclusionRows,
+  syncWafExclusionMirror,
+} from "./waf-exclusion-mirror";
+import { applyOrUndo, caddyAcceptedLastApply } from "../rejected-apply";
 import { assertAttachableAccessList } from "./access-lists";
 import { revokeForwardAuthSessionsOfDeletedHosts } from "./forward-auth";
-import { asc, containsText, desc } from "@/src/lib/db/ops";
+import { asc, containsText, desc, first } from "@/src/lib/db/ops";
 
 export type { ProxyHostRateLimit } from "../rate-limit-rules";
 
@@ -716,7 +724,7 @@ function sanitizeAuthentikMeta(meta: ProxyHostAuthentikMeta | undefined): ProxyH
 
   const domain = normalizeMetaValue(meta.outpost_domain ?? null);
   if (domain) {
-    normalized.outpost_domain = domain;
+    normalized.outpost_domain = stripPlaceholders(domain);
   }
 
   const upstream = normalizeMetaValue(meta.outpost_upstream ?? null);
@@ -1366,7 +1374,7 @@ function normalizeAuthentikInput(
   }
 
   if (input.outpostDomain !== undefined) {
-    const domain = normalizeMetaValue(input.outpostDomain ?? null);
+    const domain = normalizeMetaValue(input.outpostDomain ? stripPlaceholders(input.outpostDomain) : null);
     if (domain) {
       next.outpost_domain = domain;
     } else {
@@ -2682,11 +2690,13 @@ export async function createProxyHost(rawInput: ProxyHostInput, actorUserId: num
     throw new Error("At least one upstream must be specified");
   }
   input.upstreams.forEach(validateUpstreamProtocol);
+  validateProxyHostCaddyScalars(input);
   await assertWildcardIssuable(domains, input.certificateId ?? null);
   const tags = normalizeTags(input.tags);
   // Change approvals (ee): a host a policy protects is only created through an approved change request.
   await assertHostCreateApproved("proxy_host", input.name, tags);
   await assertAttachableAccessList(input.accessListId);
+  const acceptedBefore = await caddyAcceptedLastApply();
 
   const now = nowIso();
   const meta = buildMeta({}, input, input.waf ? await getWafSettings() : null);
@@ -2737,7 +2747,25 @@ export async function createProxyHost(rawInput: ProxyHostInput, actorUserId: num
   });
 
   try {
-    await applyCaddyConfig();
+    await applyOrUndo({
+      actorUserId,
+      acceptedBefore,
+      what: "proxy host",
+      // A host Caddy rejects is not kept (see rejected-apply.ts).
+      undo: async () => {
+        await appDb.transaction(async (tx) => {
+          await tx.delete(proxyHosts).where(eq(proxyHosts.id, record.id));
+          await deleteWafExclusionsForHost(tx, record.id);
+        });
+        await logAuditEvent({
+          userId: actorUserId,
+          action: "delete",
+          entityType: "proxy_host",
+          entityId: record.id,
+          summary: `Removed proxy host ${input.name} again: Caddy rejected the configuration with it`
+        });
+      },
+    });
   } catch (error) {
     // The host is stored: say which one, so the caller can tell it was saved but is not live yet.
     if (error instanceof CaddyApplyError) error.proxyHostId = record.id;
@@ -2769,6 +2797,7 @@ export async function updateProxyHost(id: number, rawInput: Partial<ProxyHostInp
   if (input.upstreams) {
     input.upstreams.forEach(validateUpstreamProtocol);
   }
+  validateProxyHostCaddyScalars(input);
   const effectiveCertificateId =
     input.certificateId !== undefined ? input.certificateId : existing.certificateId;
   await assertWildcardIssuable(domainList, effectiveCertificateId);
@@ -2820,6 +2849,11 @@ export async function updateProxyHost(id: number, rawInput: Partial<ProxyHostInp
     });
   }
 
+  // What is put back if Caddy rejects the configuration with this change.
+  const acceptedBefore = await caddyAcceptedLastApply();
+  const previousRow = await first(appDb.select().from(proxyHosts).where(eq(proxyHosts.id, id)).limit(1));
+  const previousExclusions = input.waf !== undefined ? await readHostWafExclusionRows(id) : null;
+
   const now = nowIso();
   await appDb
     .update(proxyHosts)
@@ -2863,7 +2897,27 @@ export async function updateProxyHost(id: number, rawInput: Partial<ProxyHostInp
     data: input
   });
 
-  await applyCaddyConfig();
+  await applyOrUndo({
+    actorUserId,
+    acceptedBefore,
+    what: "proxy host",
+    undo: async () => {
+      if (!previousRow) return;
+      const { id: _id, ...columns } = previousRow;
+      void _id;
+      await appDb.transaction(async (tx) => {
+        await tx.update(proxyHosts).set(columns).where(eq(proxyHosts.id, id));
+        if (previousExclusions) await restoreHostWafExclusionRows(tx, id, previousExclusions);
+      });
+      await logAuditEvent({
+        userId: actorUserId,
+        action: "update",
+        entityType: "proxy_host",
+        entityId: id,
+        summary: `Undid the update of proxy host ${existing.name}: Caddy rejected the configuration with it`
+      });
+    },
+  });
   return (await getProxyHost(id))!;
 }
 

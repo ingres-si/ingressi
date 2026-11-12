@@ -39,6 +39,7 @@ services:
       DATABASE_PATH: /app/data/ingressi.db
       DATABASE_URL: file:/app/data/ingressi.db
       CADDY_API_URL: http://caddy:2019
+      CADDY_ADMIN_SOCKET: /run/caddy-admin/admin.sock
       # Shares the main E2E Caddy with the primary web instance; only one
       # monitor may auto-heal a shared Caddy or the two instances fight over
       # the configuration (this instance has its own empty database).
@@ -47,8 +48,11 @@ services:
       AUTH_RATE_LIMIT_ENABLED: "false"
       OAUTH_ENABLED: "false"
       CLICKHOUSE_PASSWORD: ""
+    group_add:
+      - "10000"
     volumes:
       - caddy-manager-registration-data:/app/data
+      - caddy-admin:/run/caddy-admin
     depends_on:
       caddy:
         condition: service_healthy

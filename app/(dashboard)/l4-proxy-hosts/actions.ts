@@ -271,7 +271,7 @@ export async function updateL4ProxyHostAction(
 
     const tags = tagsForWrite(session.access, "l4_proxy_hosts", formData.has("tags") ? String(formData.get("tags") ?? "") : undefined, existing.tags);
     if (tags !== undefined) input.tags = tags;
-    assertL4WriteAllowed(session.access, input);
+    assertL4WriteAllowed(session.access, input, existing);
     await assertListenPortFreeOutsideScope(
       session.access,
       input.protocol ?? existing.protocol,

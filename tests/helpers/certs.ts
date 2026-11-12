@@ -145,3 +145,28 @@ export function issueExternalClientCertificate(
   cert.sign(caKey, forge.md.sha256.create());
   return { certificatePem: forge.pki.certificateToPem(cert), privateKeyPem: forge.pki.privateKeyToPem(keypair.privateKey) };
 }
+
+let cachedServer: GeneratedCertificate | null = null;
+let cachedCa: ExternalCa | null = null;
+
+/**
+ * A real certificate and key for tests that store an imported certificate
+ * (the models refuse anything Caddy could not load). Generated once per test
+ * file; the PEM text has no trailing line break.
+ */
+export function testServerCertificate(): GeneratedCertificate {
+  if (!cachedServer) {
+    const made = createSelfSignedServerCertificate('fixture.example.com', ['fixture.example.com']);
+    cachedServer = { certificatePem: made.certificatePem.trim(), privateKeyPem: made.privateKeyPem.trim() };
+  }
+  return cachedServer;
+}
+
+/** A real CA certificate and its key for tests that store a CA certificate. Generated once per test file. */
+export function testCa(): ExternalCa {
+  if (!cachedCa) {
+    const made = createExternalCa('Fixture CA');
+    cachedCa = { certificatePem: made.certificatePem.trim(), privateKeyPem: made.privateKeyPem.trim() };
+  }
+  return cachedCa;
+}

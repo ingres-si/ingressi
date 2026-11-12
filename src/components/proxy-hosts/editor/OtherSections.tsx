@@ -455,7 +455,13 @@ export function AdvancedSection() {
       <EditorCard
         id="raw-json"
         title="Raw Caddy JSON"
-        description={data.isAdmin ? undefined : "Only administrators can change custom Caddy JSON."}
+        description={
+          data.isAdmin
+            ? undefined
+            : data.host?.customPreHandlersJson || data.host?.customReverseProxyJson
+              ? "Only administrators can change custom Caddy JSON. This host has some, so only administrators can add an upstream or another destination to it."
+              : "Only administrators can change custom Caddy JSON."
+        }
       >
         <div className="grid grid-cols-[repeat(auto-fit,minmax(min(300px,100%),1fr))] gap-x-5 gap-y-3">
           <JsonField

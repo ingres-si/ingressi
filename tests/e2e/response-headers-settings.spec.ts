@@ -7,7 +7,7 @@
  * What Caddy then sends is tested through real requests in
  * functional/response-headers.spec.ts.
  */
-import { execFileSync } from 'node:child_process';
+import { caddyAdminGet } from '../helpers/live-caddy';
 import { test, expect, type Page } from '@playwright/test';
 
 const BASE_URL = 'http://localhost:3000';
@@ -57,11 +57,7 @@ async function writeSettings(page: Page, data: Partial<Settings>) {
 /** The response operations of the first route of the running main server when it is the response headers route, or null. */
 function liveRoute(): Record<string, unknown> | null {
   try {
-    const out = execFileSync(
-      'docker',
-      ['exec', 'ingressi-caddy', 'wget', '-qO-', 'http://localhost:2019/config/apps/http/servers/ingressi/routes/0'],
-      { encoding: 'utf-8', timeout: 10_000, stdio: ['ignore', 'pipe', 'ignore'] }
-    );
+    const out = caddyAdminGet('/config/apps/http/servers/ingressi/routes/0');
     const route = JSON.parse(out) as { match?: unknown; handle?: Array<{ handler: string; response?: Record<string, unknown> }> } | null;
     if (!route || route.match) return null;
     const handler = route.handle?.[0];
