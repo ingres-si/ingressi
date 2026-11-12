@@ -822,7 +822,7 @@ async function authorize(access: Access, row: RequestRow): Promise<void> {
   if (!existing) throw outOfScope();
   if (kind === "delete" || !input.host) return;
   tagsForWrite(access, "l4_proxy_hosts", host.tags, existing.tags);
-  assertL4WriteAllowed(access, host);
+  assertL4WriteAllowed(access, host, existing);
   await assertListenPortFreeOutsideScope(
     access,
     host.protocol ?? existing.protocol,

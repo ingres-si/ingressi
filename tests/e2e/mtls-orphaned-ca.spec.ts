@@ -1,13 +1,13 @@
 import { test, expect } from '@playwright/test';
 import { openCreateHostDialog, openEditorSection, setEditorSwitch } from '../helpers/proxy-api';
+import { createExternalCa, issueExternalClientCertificate } from '../helpers/certs';
 
 const API_CA = 'http://localhost:3000/api/v1/ca-certificates';
 const API_CLIENT_CERTS = 'http://localhost:3000/api/v1/client-certificates';
 
-// Placeholder PEMs are fine here: the CA/cert are never attached to a host,
-// so they are not embedded into the Caddy config and don't need to be valid.
-const FAKE_PEM = '-----BEGIN CERTIFICATE-----\nMIIBfake\n-----END CERTIFICATE-----';
-const FAKE_KEY = '-----BEGIN PRIVATE KEY-----\nMIIBfake\n-----END PRIVATE KEY-----';
+// Real certificates: the API refuses what Caddy could not load.
+const CA = createExternalCa('Orphan Test CA');
+const CLIENT_PEM = issueExternalClientCertificate(CA, 'orphan-test-device').certificatePem;
 
 /**
  * Regression: deleting a CA certificate must also remove the client
@@ -28,7 +28,7 @@ test.describe('mTLS — deleted CA must not remain selectable', () => {
     // 1. Create a CA.
     const caResp = await page.request.post(API_CA, {
       headers: { Origin: origin },
-      data: { name: caName, certificatePem: FAKE_PEM, privateKeyPem: FAKE_KEY },
+      data: { name: caName, certificatePem: CA.certificatePem, privateKeyPem: CA.privateKeyPem },
     });
     expect(caResp.ok()).toBeTruthy();
     const ca = await caResp.json() as { id: number };
@@ -40,8 +40,7 @@ test.describe('mTLS — deleted CA must not remain selectable', () => {
         caCertificateId: ca.id,
         commonName: certCommonName,
         serialNumber: 'ORPHAN01',
-        fingerprintSha256: 'AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99:AA:BB:CC:DD:EE:FF:00:11:22:33:44:55:66:77:88:99',
-        certificatePem: FAKE_PEM,
+        certificatePem: CLIENT_PEM,
         validFrom: '2026-01-01T00:00:00Z',
         validTo: '2030-01-01T00:00:00Z',
       },

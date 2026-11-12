@@ -202,6 +202,11 @@ export const config = {
     return resolvePreviousSessionSecrets();
   },
   caddyApiUrl: process.env.CADDY_API_URL ?? DEFAULT_CADDY_URL,
+  // When set, the Caddy admin API is reached over this unix socket instead of
+  // a TCP port, so no admin API listens on a port that proxied traffic inside
+  // the Caddy container could dial. caddyApiUrl is still used to derive the
+  // Caddy service hostname (dashboard dial, managed certs). Empty → TCP.
+  caddyAdminSocket: process.env.CADDY_ADMIN_SOCKET?.trim() || null,
   // Auto-recovery of the Caddy configuration on drift (restart/recreation).
   // Disable on instances that do not own the targeted Caddy (e.g. auxiliary
   // Ingressi instances sharing one Caddy in the e2e stack) — two enabled monitors

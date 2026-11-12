@@ -136,6 +136,11 @@ do_apply() {
   # Record timestamp so startup can detect an in-progress apply.
   date +%s > "$APPLY_LOCK"
 
+  # The trigger this apply answers, read before compose reads the override
+  # file: a trigger written later than this may ask for ports this apply did
+  # not see, and must stay for the poll loop (see the end of this function).
+  APPLY_TRIGGER=$(cat "$TRIGGER_FILE" 2>/dev/null || echo "")
+
   COMPOSE_PROJECT="$(detect_project_name)"
   log "Using compose project: $COMPOSE_PROJECT"
 
@@ -218,8 +223,19 @@ do_apply() {
   fi
 
   # Delete the trigger file after processing so stale triggers don't cause
-  # "Waiting for port manager sidecar..." on the next boot.
-  rm -f "$TRIGGER_FILE"
+  # "Waiting for port manager sidecar..." on the next boot. Only the trigger
+  # this apply answered: one written while it ran is left for the poll loop,
+  # which would otherwise never see it. The file is moved aside first (one
+  # atomic step), so a trigger written after that is never the one deleted;
+  # what was moved is put back unless it is the answered trigger or a newer
+  # one has arrived meanwhile.
+  if [ -n "$APPLY_TRIGGER" ] && mv "$TRIGGER_FILE" "$TRIGGER_FILE.done" 2>/dev/null; then
+    if [ "$(cat "$TRIGGER_FILE.done" 2>/dev/null || echo "")" = "$APPLY_TRIGGER" ] || [ -f "$TRIGGER_FILE" ]; then
+      rm -f "$TRIGGER_FILE.done"
+    else
+      mv "$TRIGGER_FILE.done" "$TRIGGER_FILE"
+    fi
+  fi
 
   # Clear the apply lock — the apply completed (success or failure).
   rm -f "$APPLY_LOCK"
@@ -237,6 +253,13 @@ do_apply() {
 # the startup restore. If the lock does not clear within the grace window
 # (crashed apply), take over and re-apply unconditionally.
 # ---------------------------------------------------------------------------
+# The trigger as it is before the startup apply: what the poll loop takes as
+# already handled (by the apply below, or before this boot). Read here, not
+# after the apply: a trigger written while the startup apply runs is newer
+# than what that apply saw, and the poll loop has to apply it.
+# Use explicit assignment — do NOT use ${VAR:-fallback} which treats empty as unset.
+LAST_TRIGGER=$(cat "$TRIGGER_FILE" 2>/dev/null || echo "")
+
 if [ -f "$OVERRIDE_FILE" ]; then
   if [ -f "$APPLY_LOCK" ]; then
     LOCK_TS=$(cat "$APPLY_LOCK" 2>/dev/null || echo "0")
@@ -273,11 +296,6 @@ else
   write_status "idle" "Port manager sidecar is running and ready."
   log "Started. No L4 port override file yet."
 fi
-
-# Capture the current trigger content so the poll loop doesn't re-apply
-# a trigger that was already handled (either above or before this boot).
-# Use explicit assignment — do NOT use ${VAR:-fallback} which treats empty as unset.
-LAST_TRIGGER=$(cat "$TRIGGER_FILE" 2>/dev/null || echo "")
 
 log "Watching $TRIGGER_FILE for changes (poll every ${POLL_INTERVAL}s)"
 

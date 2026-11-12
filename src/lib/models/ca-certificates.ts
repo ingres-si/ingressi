@@ -3,9 +3,11 @@ import { logAuditEvent } from "../audit";
 import { applyCaddyConfig } from "../caddy";
 import { caCertificates, issuedClientCertificates, mtlsCertificateRoles, proxyHosts } from "../db/schema";
 import { eq, inArray } from "drizzle-orm";
-import { ApiConflictError } from "../api-errors";
+import { ApiConflictError, ApiValidationError } from "../api-errors";
 import { decryptSecret, encryptSecret, isEncryptedSecret } from "../secret";
-import { asc, desc } from "@/src/lib/db/ops";
+import { asc, desc, first } from "@/src/lib/db/ops";
+import { applyOrUndo, caddyAcceptedLastApply } from "../rejected-apply";
+import { assertCaCertificatePem, assertPrivateKeyPem } from "../pem-validation";
 
 export const CA_PRIVATE_KEY_UNAVAILABLE_MESSAGE =
   "The CA private key cannot be decrypted with the current SESSION_SECRET. " +
@@ -113,7 +115,21 @@ export async function getCaCertificate(id: number): Promise<CaCertificate | null
   return cert ? parseCaCertificate(cert) : null;
 }
 
+/**
+ * Caddy rejects the whole configuration over a CA certificate it cannot
+ * read, so it is checked before it is stored; a signing key must belong to it.
+ */
+function validateCaPem(certificatePem: unknown, privateKeyPem: unknown): void {
+  const certificate = assertCaCertificatePem(certificatePem);
+  if (typeof privateKeyPem === "string" ? privateKeyPem.trim() : privateKeyPem) {
+    assertPrivateKeyPem(privateKeyPem, certificate, "The CA private key");
+  }
+}
+
 export async function createCaCertificate(input: CaCertificateInput, actorUserId: number): Promise<CaCertificate> {
+  if (typeof input.name !== "string" || !input.name.trim()) throw new ApiValidationError("name is required");
+  validateCaPem(input.certificatePem, input.privateKeyPem);
+  const acceptedBefore = await caddyAcceptedLastApply();
   const now = nowIso();
   const [record] = await appDb
     .insert(caCertificates)
@@ -138,7 +154,22 @@ export async function createCaCertificate(input: CaCertificateInput, actorUserId
     entityId: record.id,
     summary: `Created CA certificate ${input.name}`
   });
-  await applyCaddyConfig();
+  // A CA certificate Caddy cannot load is not kept (see rejected-apply.ts).
+  await applyOrUndo({
+    actorUserId,
+    acceptedBefore,
+    what: "CA certificate",
+    undo: async () => {
+      await appDb.delete(caCertificates).where(eq(caCertificates.id, record.id));
+      await logAuditEvent({
+        userId: actorUserId,
+        action: "delete",
+        entityType: "ca_certificate",
+        entityId: record.id,
+        summary: `Removed CA certificate ${input.name} again: Caddy rejected the configuration with it`
+      });
+    },
+  });
   return (await getCaCertificate(record.id))!;
 }
 
@@ -147,6 +178,15 @@ export async function updateCaCertificate(id: number, input: Partial<CaCertifica
   if (!existing) {
     throw new Error("CA certificate not found");
   }
+
+  // A stored certificate from before this check is only checked again when it or its key changes.
+  if (input.certificatePem !== undefined || (typeof input.privateKeyPem === "string" && input.privateKeyPem.trim())) {
+    validateCaPem(input.certificatePem ?? existing.certificatePem, input.privateKeyPem);
+  }
+
+  // What is put back if Caddy rejects the configuration with this change.
+  const acceptedBefore = await caddyAcceptedLastApply();
+  const previousRow = await first(appDb.select().from(caCertificates).where(eq(caCertificates.id, id)).limit(1));
 
   const now = nowIso();
   await appDb
@@ -166,7 +206,24 @@ export async function updateCaCertificate(id: number, input: Partial<CaCertifica
     entityId: id,
     summary: `Updated CA certificate ${input.name ?? existing.name}`
   });
-  await applyCaddyConfig();
+  await applyOrUndo({
+    actorUserId,
+    acceptedBefore,
+    what: "CA certificate",
+    undo: async () => {
+      if (!previousRow) return;
+      const { id: _id, ...columns } = previousRow;
+      void _id;
+      await appDb.update(caCertificates).set(columns).where(eq(caCertificates.id, id));
+      await logAuditEvent({
+        userId: actorUserId,
+        action: "update",
+        entityType: "ca_certificate",
+        entityId: id,
+        summary: `Undid the update of CA certificate ${existing.name}: Caddy rejected the configuration with it`
+      });
+    },
+  });
   return (await getCaCertificate(id))!;
 }
 

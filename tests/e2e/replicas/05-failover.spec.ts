@@ -6,6 +6,7 @@
  */
 import { test, expect } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
+import { caddyAdminGet } from '../../helpers/live-caddy';
 import { httpGet, waitForStatus } from '../../helpers/http';
 import {
   REPLICAS,
@@ -25,11 +26,10 @@ const DOMAIN = 'replica-failover.test';
 /** Caddy's live configuration, or null while its admin API does not answer. */
 function liveCaddyConfig(): string | null {
   try {
-    return execFileSync('docker', ['exec', CADDY, 'wget', '-qO-', 'http://localhost:2019/config/'], {
-      encoding: 'utf8',
-      timeout: 10_000,
-      stdio: ['ignore', 'pipe', 'ignore'],
-    });
+    // Read the shared Caddy admin socket through a replica that is up: during
+    // failover the leader (and its web container) is stopped, so default to the
+    // follower, which always survives the assertions that read the config.
+    return caddyAdminGet('/config/', follower?.container ?? 'ingressi-web');
   } catch {
     return null;
   }

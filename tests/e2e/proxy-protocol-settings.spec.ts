@@ -8,7 +8,7 @@
  * What Caddy then does with the header is tested through the real Caddy in
  * functional/proxy-protocol.spec.ts.
  */
-import { execFileSync } from 'node:child_process';
+import { caddyAdminGet } from '../helpers/live-caddy';
 import { test, expect, type Page } from '@playwright/test';
 
 const BASE_URL = 'http://localhost:3000';
@@ -52,11 +52,7 @@ async function writeSettings(page: Page, data: Record<string, unknown>) {
 /** The `allow` list of the PROXY protocol listener wrapper in the running Caddy, or null without one. */
 function liveAllow(): string[] | null {
   try {
-    const out = execFileSync(
-      'docker',
-      ['exec', 'ingressi-caddy', 'wget', '-qO-', 'http://localhost:2019/config/apps/http/servers/ingressi/listener_wrappers'],
-      { encoding: 'utf-8', timeout: 10_000, stdio: ['ignore', 'pipe', 'ignore'] }
-    );
+    const out = caddyAdminGet('/config/apps/http/servers/ingressi/listener_wrappers');
     const wrappers = JSON.parse(out) as Array<{ wrapper: string; allow?: string[] }> | null;
     return wrappers?.find((wrapper) => wrapper.wrapper === 'proxy_protocol')?.allow ?? null;
   } catch {

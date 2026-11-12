@@ -14,7 +14,7 @@ import { requirePermission } from "@/src/lib/auth";
 import { assertProxyHostWriteAllowed, getProxyHostInScope, tagsForWrite } from "@/src/lib/access-scope";
 import { deleteProxyHost, updateProxyHost, type ProxyHost, type ProxyHostInput } from "@/src/lib/models/proxy-hosts";
 import { runAsChangeBatch } from "@/src/lib/change-batch";
-import { applyCaddyConfig } from "@/src/lib/caddy";
+import { applyBatchOrUndo, caddyAcceptedLastApply } from "@/src/lib/rejected-apply";
 import { logAuditEvent } from "@/src/lib/audit";
 import { hostModeOf, withHostMode } from "@/src/lib/waf-host-mode";
 import { normalizeTags } from "@/src/lib/host-tags";
@@ -154,8 +154,10 @@ export async function bulkProxyHostsAction(rawIds: unknown, rawOperation: unknow
 
   const done: { host: ProxyHost; input: Partial<ProxyHostInput> }[] = [];
   let applyError: string | null = null;
+  let undone = false;
   if (toApply.length > 0) {
-    const { applyRequested } = await runAsChangeBatch(async () => {
+    const acceptedBefore = await caddyAcceptedLastApply();
+    const { applyRequested, undo } = await runAsChangeBatch(async () => {
       for (const item of toApply) {
         try {
           if (operation.type === "delete") await deleteProxyHost(item.host.id, userId);
@@ -181,10 +183,11 @@ export async function bulkProxyHostsAction(rawIds: unknown, rawOperation: unknow
       }
     }
     if (applyRequested) {
-      try {
-        await applyCaddyConfig();
-      } catch (error) {
-        applyError = failureMessage(error);
+      // A configuration Caddy rejects is not kept: the hosts go back to what they were (rejected-apply.ts).
+      const failure = await applyBatchOrUndo({ actorUserId: userId, acceptedBefore, undo });
+      if (failure) {
+        applyError = failure.message;
+        undone = failure.undone;
       }
     }
   }
@@ -193,14 +196,14 @@ export async function bulkProxyHostsAction(rawIds: unknown, rawOperation: unknow
   if (submitted > 0) revalidatePath("/approvals");
 
   const parts: string[] = [];
-  if (done.length > 0) parts.push(`${DONE_TEXT[operation.type]} ${plural(done.length, "host")}.`);
+  if (done.length > 0 && !undone) parts.push(`${DONE_TEXT[operation.type]} ${plural(done.length, "host")}.`);
   if (submitted > 0) parts.push(`${plural(submitted, "change")} submitted for approval.`);
   if (unchanged > 0) parts.push(`${plural(unchanged, "host")} already ${unchanged === 1 ? "was" : "were"} as asked.`);
   if (failed.length > 0) parts.push(`${plural(failed.length, "host")} could not be changed: ${failed.map((f) => `${f.name ?? `#${f.id}`} (${f.message})`).join("; ")}.`);
-  if (applyError) parts.push(`The changes are saved, but Caddy did not take the new configuration: ${applyError}`);
+  if (applyError) parts.push(undone ? applyError : `The changes are saved, but Caddy did not take the new configuration: ${applyError}`);
   return {
     ok: failed.length === 0 && applyError === null,
-    changed: done.length,
+    changed: undone ? 0 : done.length,
     submitted,
     unchanged,
     failed,

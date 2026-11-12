@@ -4,6 +4,10 @@ import { applyCaddyConfig } from "../caddy";
 import { issuedClientCertificates } from "../db/schema";
 import { desc } from "@/src/lib/db/ops";
 import { eq } from "drizzle-orm";
+import { ApiValidationError } from "../api-errors";
+import { normalizeFingerprint } from "../caddy-mtls";
+import { assertCaCertificatePem } from "../pem-validation";
+import { applyOrUndo, caddyAcceptedLastApply } from "../rejected-apply";
 
 export type IssuedClientCertificate = {
   id: number;
@@ -23,7 +27,8 @@ export type IssuedClientCertificateInput = {
   caCertificateId: number;
   commonName: string;
   serialNumber: string;
-  fingerprintSha256: string;
+  /** The certificate's own SHA-256 fingerprint; computed when left out, refused when it is another one. */
+  fingerprintSha256?: string;
   certificatePem: string;
   validFrom: string;
   validTo: string;
@@ -62,10 +67,43 @@ export async function getIssuedClientCertificate(id: number): Promise<IssuedClie
   return record ? parseIssuedClientCertificate(record) : null;
 }
 
+/**
+ * The input as it is stored. The certificate is checked the way Caddy reads
+ * it (a host that trusts it gets it in its TLS policy, and Caddy rejects the
+ * whole configuration over one it cannot parse), and the fingerprint is the
+ * certificate's own: it ends up in the expressions that decide who gets
+ * through a host's mTLS access rules, so it is never taken from the request.
+ */
+function validateIssuedClientCertificate(input: IssuedClientCertificateInput): IssuedClientCertificateInput {
+  if (!Number.isSafeInteger(input?.caCertificateId) || input.caCertificateId <= 0) {
+    throw new ApiValidationError("caCertificateId must be a positive integer");
+  }
+  for (const field of ["commonName", "serialNumber", "validFrom", "validTo"] as const) {
+    if (typeof input[field] !== "string" || !input[field].trim()) {
+      throw new ApiValidationError(`${field} is required`);
+    }
+  }
+  for (const field of ["validFrom", "validTo"] as const) {
+    if (Number.isNaN(Date.parse(input[field]))) throw new ApiValidationError(`${field} must be a date`);
+  }
+  const certificate = assertCaCertificatePem(input.certificatePem, "The client certificate");
+  const fingerprint = certificate.fingerprint256;
+  if (
+    input.fingerprintSha256 !== undefined &&
+    input.fingerprintSha256 !== null &&
+    (typeof input.fingerprintSha256 !== "string" || normalizeFingerprint(input.fingerprintSha256.trim()) !== normalizeFingerprint(fingerprint))
+  ) {
+    throw new ApiValidationError("fingerprintSha256 is not the SHA-256 fingerprint of the certificate (leave it out to have it computed)");
+  }
+  return { ...input, fingerprintSha256: fingerprint };
+}
+
 export async function createIssuedClientCertificate(
-  input: IssuedClientCertificateInput,
+  rawInput: IssuedClientCertificateInput,
   actorUserId: number
 ): Promise<IssuedClientCertificate> {
+  const input = validateIssuedClientCertificate(rawInput);
+  const acceptedBefore = await caddyAcceptedLastApply();
   const now = nowIso();
   const [record] = await appDb
     .insert(issuedClientCertificates)
@@ -73,7 +111,7 @@ export async function createIssuedClientCertificate(
       caCertificateId: input.caCertificateId,
       commonName: input.commonName.trim(),
       serialNumber: input.serialNumber.trim(),
-      fingerprintSha256: input.fingerprintSha256.trim(),
+      fingerprintSha256: input.fingerprintSha256!,
       certificatePem: input.certificatePem.trim(),
       validFrom: input.validFrom,
       validTo: input.validTo,
@@ -98,7 +136,22 @@ export async function createIssuedClientCertificate(
       serialNumber: input.serialNumber
     }
   });
-  await applyCaddyConfig();
+  // A client certificate Caddy cannot load is not kept (see rejected-apply.ts).
+  await applyOrUndo({
+    actorUserId,
+    acceptedBefore,
+    what: "client certificate",
+    undo: async () => {
+      await appDb.delete(issuedClientCertificates).where(eq(issuedClientCertificates.id, record.id));
+      await logAuditEvent({
+        userId: actorUserId,
+        action: "delete",
+        entityType: "issued_client_certificate",
+        entityId: record.id,
+        summary: `Removed client certificate ${input.commonName} again: Caddy rejected the configuration with it`
+      });
+    },
+  });
   return (await getIssuedClientCertificate(record.id))!;
 }
 

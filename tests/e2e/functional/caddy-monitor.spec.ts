@@ -15,6 +15,7 @@
  */
 import { test, expect } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
+import { caddyAdminGet } from '../../helpers/live-caddy';
 import { createHash } from 'node:crypto';
 import { createProxyHost } from '../../helpers/proxy-api';
 
@@ -26,11 +27,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 /** Fetch Caddy's live admin config from inside the caddy container; null if unreachable. */
 function fetchLiveConfig(): string | null {
   try {
-    return execFileSync(
-      'docker',
-      ['exec', CADDY, 'wget', '-qO-', 'http://localhost:2019/config/'],
-      { encoding: 'utf-8', timeout: 10_000, stdio: ['ignore', 'pipe', 'ignore'] },
-    );
+    return caddyAdminGet('/config/');
   } catch {
     return null;
   }

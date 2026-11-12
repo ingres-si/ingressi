@@ -4,6 +4,7 @@
  *
  * Extracted from caddy.ts so they can be unit-tested independently.
  */
+import { stripPlaceholders } from "./caddy-placeholders";
 
 /**
  * Normalise a fingerprint to the format Caddy uses:
@@ -219,7 +220,10 @@ export function resolveAllowedFingerprints(
  * Uses Caddy's `{http.request.tls.client.fingerprint}` placeholder.
  */
 export function buildFingerprintCelExpression(fingerprints: Set<string>): string {
-  const fps = Array.from(fingerprints).sort();
+  // Only what a fingerprint looks like goes into the expression: anything else
+  // (a quote, a Caddy placeholder) would change what it says. It matches no
+  // certificate, so leaving it out allows nobody more.
+  const fps = Array.from(fingerprints).filter((fp) => /^[0-9a-f]{1,128}$/.test(fp)).sort();
   const quoted = fps.map((fp) => `'${fp}'`).join(", ");
   return `{http.request.tls.client.fingerprint} in [${quoted}]`;
 }
@@ -254,7 +258,7 @@ export function buildMtlsRbacSubroutes(
     if (rule.denyAll) {
       // Explicit deny: any request matching this path gets 403
       subroutes.push({
-        match: [{ path: [rule.pathPattern] }],
+        match: [{ path: [stripPlaceholders(rule.pathPattern)] }],
         handle: [{
           handler: "static_response",
           status_code: "403",
@@ -270,7 +274,7 @@ export function buildMtlsRbacSubroutes(
     if (allowedFps.size === 0) {
       // Rule exists but no certs match → deny all for this path
       subroutes.push({
-        match: [{ path: [rule.pathPattern] }],
+        match: [{ path: [stripPlaceholders(rule.pathPattern)] }],
         handle: [{
           handler: "static_response",
           status_code: "403",
@@ -284,14 +288,14 @@ export function buildMtlsRbacSubroutes(
     // Allow route: path + fingerprint CEL match
     const celExpr = buildFingerprintCelExpression(allowedFps);
     subroutes.push({
-      match: [{ path: [rule.pathPattern], expression: celExpr }],
+      match: [{ path: [stripPlaceholders(rule.pathPattern)], expression: celExpr }],
       handle: [...baseHandlers, reverseProxyHandler],
       terminal: true,
     });
 
     // Deny route: path matches but fingerprint didn't → 403
     subroutes.push({
-      match: [{ path: [rule.pathPattern] }],
+      match: [{ path: [stripPlaceholders(rule.pathPattern)] }],
       handle: [{
         handler: "static_response",
         status_code: "403",

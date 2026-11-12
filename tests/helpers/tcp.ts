@@ -101,6 +101,29 @@ export async function waitForTcpRoute(
   throw new Error(`TCP port ${host}:${port} not ready after ${timeoutMs}ms`);
 }
 
+/**
+ * Poll until data sent to a TCP port comes back, that is until Caddy proxies
+ * the port to an echo upstream. waitForTcpRoute only waits for the port to
+ * accept connections, which Docker's port forwarding does whether or not
+ * Caddy listens behind it: after a change made through the dashboard, or a
+ * restart of the Caddy container, wait with this one before sending the
+ * traffic a test asserts on.
+ */
+export async function waitForTcpEcho(host: string, port: number, timeoutMs = 30_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  const probe = 'echo-ready-probe';
+  while (Date.now() < deadline) {
+    try {
+      const res = await tcpSend(host, port, `${probe}\n`, 1_000);
+      if (res.data.includes(probe)) return;
+    } catch {
+      // not accepting connections yet
+    }
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  throw new Error(`TCP port ${host}:${port} did not echo within ${timeoutMs}ms`);
+}
+
 // ---------------------------------------------------------------------------
 // UDP helpers
 // ---------------------------------------------------------------------------

@@ -203,7 +203,12 @@ export async function loadHostEditorData(
     clientAddress: clientAddressOf(trustedProxies),
     accessLists: editorAccessLists,
     blockedSourcesActive: Boolean(blockedSources && blockedSources.rules.length > 0),
-    caCertificates: caCertificates.map((ca) => ({ id: ca.id, name: ca.name })),
+    caCertificates: caCertificates.map((ca) => ({
+      id: ca.id,
+      name: ca.name,
+      // The same test the Caddy config uses: a certificate was ever issued from this CA here (revoked ones count).
+      issuesHere: clientCertificates.some((cert) => cert.caCertificateId === ca.id),
+    })),
     mtlsRoles: mtlsRoles.map((role) => ({ id: role.id, name: role.name, description: role.description, certificates: role.certificateCount })),
     clientCertificates: clientCertificates.map((cert) => ({
       id: cert.id,

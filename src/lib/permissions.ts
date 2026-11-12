@@ -234,6 +234,10 @@ export function isScopableArea(area: string): area is ScopableArea {
  * scim:write issues tokens that create users and, through group-to-role
  * mappings, give them roles; access_reviews:write starts campaigns whose
  * reviewers can take access away from every user, administrators included.
+ * config:import replaces the whole configuration with a file the caller
+ * supplies, which holds everything an administrator can set (raw Caddy JSON
+ * on hosts, upstreams on Caddy's admin API); so does backups:restore held
+ * with backups:write, which names the destination the backup is read from.
  * Holding users:write and settings:write together is also administrator-level,
  * and so is users:write with approvals:approve, which could create a second
  * account to approve one's own changes (see ADMIN_LEVEL_COMBINATIONS).
@@ -251,11 +255,13 @@ export const ADMIN_LEVEL_PERMISSIONS: readonly Permission[] = [
   "approvals:manage",
   "scim:write",
   "access_reviews:write",
+  "config:import",
 ];
 
 export const ADMIN_LEVEL_COMBINATIONS: readonly (readonly Permission[])[] = [
   ["users:write", "settings:write"],
   ["users:write", "approvals:approve"],
+  ["backups:write", "backups:restore"],
 ];
 
 export function isAdminLevel(permissions: Iterable<Permission>): boolean {

@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { SegmentedControl } from "@/components/ui/SegmentedControl";
 import { Field, FieldError, TextField, ToggleRow, useFieldProps, AddButton, RemoveButton, WasHint } from "./fields";
-import { DEFAULT_PASSIVE_FAIL_DURATION, LB_POLICIES, parseUpstream, rowKey, SCHEMES, type LbForm, type Scheme, type UpstreamRow } from "./model";
+import { AS_WRITTEN, DEFAULT_PASSIVE_FAIL_DURATION, LB_POLICIES, parseUpstream, rowKey, SCHEMES, type LbForm, type Scheme, type UpstreamRow } from "./model";
 
 /** A native select styled like the inputs: keyboard and screen-reader friendly, and the platform picker on phones. */
 export function NativeSelect({ className, children, ...props }: SelectHTMLAttributes<HTMLSelectElement> & { children: ReactNode }) {
@@ -105,6 +105,8 @@ export function UpstreamRows({
                     {scheme}
                   </option>
                 ))}
+                {/* Only for an upstream stored in a form the two schemes cannot express. */}
+                {row.scheme === AS_WRITTEN && <option value={AS_WRITTEN}>as written</option>}
               </NativeSelect>
               <UpstreamAddress id={idOf(index)} row={row} index={index} onChange={(next) => set(index, next)} />
               {rows.length > 1 ? (

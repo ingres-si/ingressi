@@ -17,7 +17,10 @@
  *   trust anchors for every host, so they need a certificates permission
  *   without a scope.
  * - Every non-administrator (scoped or not) is refused raw Caddy JSON on proxy
- *   hosts and upstreams on Caddy's admin API port, and may only reference a
+ *   hosts and any address Caddy would dial on its admin API port (upstreams,
+ *   location rules, the Authentik outpost, the forward-auth server), cannot
+ *   add such an address to a host that carries custom Caddy JSON, needs
+ *   waf:write to change a host's custom WAF directives, and may only reference a
  *   certificate, access list, CA/client certificate, mTLS role, user or group
  *   on a host if they can read it (or the host already references it).
  *
@@ -33,7 +36,14 @@ import { tagsMatchAny } from "./host-tag-filter";
 import { normalizeProxyHostDomains } from "./proxy-host-domains";
 import { isDomainCoveredByWildcard } from "./cert-domain-match";
 import { extractL4ListenPort } from "./l4-reserved-ports";
-import { getProxyHost, type MtlsConfig, type ProxyHost, type ProxyHostInput } from "./models/proxy-hosts";
+import {
+  authentikAuthDial,
+  authentikOutpostDial,
+  dialAddressPort,
+  forwardAuthDial,
+  parseUpstreamTarget,
+} from "./caddy-utils";
+import { getProxyHost, type MtlsConfig, type ProxyHost, type ProxyHostInput, type WafHostConfig } from "./models/proxy-hosts";
 import { getL4ProxyHost, type L4ProxyHost, type L4ProxyHostInput } from "./models/l4-proxy-hosts";
 
 /** A refusal because of the caller's role (403); the message is safe to show. */
@@ -162,24 +172,98 @@ export async function assertListenPortFreeOutsideScope(
   }
 }
 
-function upstreamPort(upstream: string): number | null {
-  let rest = upstream.trim();
-  const scheme = rest.match(/^([a-zA-Z][a-zA-Z0-9+.-]*):\/\//);
-  if (scheme) rest = rest.slice(scheme[0].length);
-  rest = rest.split("/")[0] ?? "";
-  const match = rest.match(/:(\d{1,5})$/);
-  return match ? Number(match[1]) : null;
+/**
+ * Refuses a dial address (as caddy.ts builds it) that could reach Caddy's
+ * admin API: its port, a port that is not one plain number (Caddy takes
+ * "2019-2019" as port 2019), a Caddy placeholder (filled in per request), or
+ * a network-prefixed/socket target (unix//…, fd/…, tcp/…) that sidesteps the
+ * port check and can reach the admin API's unix socket from inside the Caddy
+ * container.
+ */
+function assertNoAdminApiDial(dial: string): void {
+  if (dial.includes("{")) {
+    throw new ScopeError("Only administrators can use Caddy placeholders in upstream addresses");
+  }
+  // A legitimate dial is [host]:port with no slash; a slash means a network
+  // prefix or unix-socket path (a plain [host]:port never contains one).
+  if (dial.includes("/")) {
+    throw new ScopeError("Only administrators can use socket or network-prefixed upstream addresses");
+  }
+  const port = dialAddressPort(dial);
+  if (port === null) return;
+  if (!/^\d{1,5}$/.test(port)) {
+    throw new ScopeError("Upstream ports must be a single number");
+  }
+  if (Number(port) === CADDY_ADMIN_PORT) {
+    throw new ScopeError(`Only administrators can proxy to port ${CADDY_ADMIN_PORT} (Caddy's admin API)`);
+  }
 }
 
-function assertNoAdminApiUpstream(upstreams: readonly string[] | null | undefined): void {
+/**
+ * The values a host already has. They are not refused again: an administrator
+ * set them, and the editor sends every field back, so refusing them would
+ * keep everybody else from saving any change to that host.
+ */
+function kept(values: readonly (string | null | undefined)[] | null | undefined): Set<string> {
+  return new Set((values ?? []).filter((value): value is string => typeof value === "string").map((value) => value.trim()));
+}
+
+/**
+ * An HTTP upstream as it is compared with what a host already has: the
+ * address Caddy dials and whether it does so over TLS. The host editor
+ * writes "backend:8080" back as "http://backend:8080", which is the same
+ * upstream; two spellings that Caddy would dial differently never are.
+ */
+function upstreamKey(upstream: string): string {
+  const target = parseUpstreamTarget(upstream);
+  return `${target.scheme === "https" ? "https" : "http"} ${target.dial.trim()}`;
+}
+
+function keptUpstreams(values: readonly (string | null | undefined)[] | null | undefined): Set<string> {
+  return new Set([...kept(values)].map(upstreamKey));
+}
+
+/** HTTP upstreams: Caddy dials what parseUpstreamTarget makes of them. `existing` is keptUpstreams(…). */
+function assertNoAdminApiUpstream(upstreams: readonly string[] | null | undefined, existing: Set<string>): void {
   for (const upstream of upstreams ?? []) {
-    if (typeof upstream === "string" && upstreamPort(upstream) === CADDY_ADMIN_PORT) {
-      throw new ScopeError(`Only administrators can proxy to port ${CADDY_ADMIN_PORT} (Caddy's admin API)`);
+    if (typeof upstream === "string" && !existing.has(upstreamKey(upstream))) {
+      assertNoAdminApiDial(parseUpstreamTarget(upstream).dial);
     }
   }
 }
 
-function sameText(a: string | null | undefined, b: string | null | undefined): boolean {
+function assertNoAdminApiHealthCheck(port: unknown, existing: number | null | undefined): void {
+  if (port === undefined || port === null || Number(port) !== CADDY_ADMIN_PORT || existing === CADDY_ADMIN_PORT) return;
+  throw new ScopeError(`Only administrators can health-check port ${CADDY_ADMIN_PORT} (Caddy's admin API)`);
+}
+
+/** Every address a proxy host input makes Caddy dial. */
+function assertNoAdminApiDials(input: Partial<ProxyHostInput>, existing: ProxyHost | null): void {
+  assertNoAdminApiUpstream(input.upstreams, keptUpstreams(existing?.upstreams));
+  assertNoAdminApiHealthCheck(input.loadBalancer?.activeHealthCheck?.port, existing?.loadBalancer?.activeHealthCheck?.port);
+  // A location rule keeps what the rule of the same path already has.
+  for (const rule of input.locationRules ?? []) {
+    const path = typeof rule?.path === "string" ? rule.path.trim() : null;
+    const current = (existing?.locationRules ?? []).find((candidate) => candidate.path.trim() === path);
+    assertNoAdminApiUpstream(rule?.upstreams, keptUpstreams(current?.upstreams));
+    assertNoAdminApiHealthCheck(rule?.loadBalancer?.activeHealthCheck?.port, current?.loadBalancer?.activeHealthCheck?.port);
+  }
+
+  const outpost = input.authentik?.outpostUpstream;
+  if (typeof outpost === "string" && outpost.trim() && outpost.trim() !== existing?.authentik?.outpostUpstream?.trim()) {
+    assertNoAdminApiDial(authentikOutpostDial(outpost.trim()));
+    assertNoAdminApiDial(authentikAuthDial(outpost.trim()));
+  }
+  const authUpstream = input.forwardAuth?.authUpstream;
+  if (typeof authUpstream === "string" && authUpstream.trim() && authUpstream.trim() !== existing?.forwardAuth?.authUpstream?.trim()) {
+    const dial = forwardAuthDial(authUpstream.trim());
+    if (dial !== null) assertNoAdminApiDial(dial);
+  }
+}
+
+function sameText(a: unknown, b: string | null | undefined): boolean {
+  // Anything but text (or nothing) is a change: the API takes JSON of any shape.
+  if (a !== null && a !== undefined && typeof a !== "string") return false;
   return (a?.trim() || null) === (b?.trim() || null);
 }
 
@@ -198,10 +282,47 @@ function mtlsReferencesChanged(next: MtlsConfig | null | undefined, previous: Mt
   );
 }
 
+function addsUpstream(values: readonly unknown[] | null | undefined, existing: Set<string>): boolean {
+  return (values ?? []).some((value) => typeof value !== "string" || !existing.has(upstreamKey(value)));
+}
+
+function setsAddress(value: unknown, existing: string | null | undefined): boolean {
+  if (value === undefined || value === null) return false;
+  if (typeof value !== "string") return true;
+  return value.trim() !== "" && value.trim() !== existing?.trim();
+}
+
+/**
+ * Whether a write gives the host a place to send requests that it does not
+ * have yet: an upstream, an upstream of a location rule (compared with the
+ * rule of the same path), the Authentik outpost or the forward-auth server.
+ * Taking one away, or changing the order, is not that.
+ */
+function addsDestination(input: Partial<ProxyHostInput>, existing: ProxyHost): boolean {
+  if (addsUpstream(input.upstreams, keptUpstreams(existing.upstreams))) return true;
+  for (const rule of input.locationRules ?? []) {
+    const path = typeof rule?.path === "string" ? rule.path.trim() : null;
+    const current = (existing.locationRules ?? []).find((candidate) => candidate.path.trim() === path);
+    if (addsUpstream(rule?.upstreams, keptUpstreams(current?.upstreams))) return true;
+  }
+  return (
+    setsAddress(input.authentik?.outpostUpstream, existing.authentik?.outpostUpstream) ||
+    setsAddress(input.forwardAuth?.authUpstream, existing.forwardAuth?.authUpstream)
+  );
+}
+
+/** The host's own WAF rule text, as Coraza gets it. */
+function wafDirectives(waf: WafHostConfig | null | undefined): string {
+  const directives: unknown = waf?.custom_directives;
+  return typeof directives === "string" ? directives.replace(/\r\n/g, "\n").trim() : directives === undefined || directives === null ? "" : "\u0000";
+}
+
 /**
  * Checks a proxy host write by a non-administrator: no raw Caddy JSON, no
- * upstream on the admin API port, and only references the caller can read
- * (or that the host already has). `existing` is null when creating.
+ * upstream on the admin API port, no new destination for a host that carries
+ * custom Caddy JSON (addsDestination), WAF rule text only with waf:write, and only references
+ * the caller can read (or that the host already has). `existing` is null
+ * when creating.
  */
 export async function assertProxyHostWriteAllowed(
   access: Access,
@@ -215,8 +336,29 @@ export async function assertProxyHostWriteAllowed(
   ) {
     throw new ScopeError("Only administrators can set custom Caddy JSON on a proxy host");
   }
-  assertNoAdminApiUpstream(input.upstreams);
-  for (const rule of input.locationRules ?? []) assertNoAdminApiUpstream(rule?.upstreams);
+  assertNoAdminApiDials(input, existing);
+  // Custom Caddy JSON can hold what only Caddy can read ({env.…} and {file.…}
+  // placeholders in request headers, a client certificate for the upstream):
+  // whoever chooses where the requests go receives it.
+  if (
+    existing &&
+    (existing.customReverseProxyJson?.trim() || existing.customPreHandlersJson?.trim()) &&
+    addsDestination(input, existing)
+  ) {
+    throw new ScopeError(
+      "Only administrators can add a destination (an upstream, a location rule's upstream, the Authentik outpost " +
+        "or the forward-auth server) to a proxy host with custom Caddy JSON"
+    );
+  }
+  // WAF rules written as text are WAF configuration: they can switch the engine,
+  // the audit log and the body limits of the host, whatever its WAF mode says.
+  if (
+    input.waf !== undefined &&
+    wafDirectives(input.waf) !== wafDirectives(existing?.waf) &&
+    !can(access, "waf:write")
+  ) {
+    throw new ScopeError("Changing a proxy host's custom WAF directives needs the waf:write permission");
+  }
 
   const certificateId = input.certificateId;
   if (certificateId !== undefined && certificateId !== null && certificateId !== existing?.certificateId) {
@@ -268,10 +410,68 @@ export async function assertForwardAuthAccessAllowed(
   }
 }
 
-/** Checks an L4 host write by a non-administrator: no upstream on the admin API port. */
-export function assertL4WriteAllowed(access: Access, input: Partial<L4ProxyHostInput>): void {
+/**
+ * Checks an L4 host write by a non-administrator: nothing that reaches
+ * Caddy's admin API, and only plain addresses. `existing` is the host being
+ * updated (null or left out when creating): what it already has is kept.
+ */
+export function assertL4WriteAllowed(access: Access, input: Partial<L4ProxyHostInput>, existing: L4ProxyHost | null = null): void {
   if (access.isAdmin) return;
-  assertNoAdminApiUpstream(input.upstreams);
+  // The raw meta object carries the same settings as the fields checked below, unchecked.
+  if (input.meta !== undefined && input.meta !== null) {
+    throw new ScopeError("Only administrators can set the raw meta object of an L4 host");
+  }
+  // The layer4 proxy dials L4 upstreams as written.
+  const upstreams = kept(existing?.upstreams);
+  for (const upstream of input.upstreams ?? []) {
+    if (typeof upstream === "string" && !upstreams.has(upstream.trim())) assertNoAdminApiDial(upstream);
+  }
+  // The listen address is a plain [host]:port: no network prefix (unix/, fd/) and no placeholder.
+  if (
+    typeof input.listenAddress === "string" &&
+    input.listenAddress.trim() !== existing?.listenAddress.trim() &&
+    !L4_LISTEN_ADDRESS.test(input.listenAddress.trim())
+  ) {
+    throw new ScopeError("Only administrators can use a listen address other than [host]:port");
+  }
+  // Caddy expands placeholders in SNI and Host matcher values.
+  const matchers = kept(existing?.matcherValue);
+  if (
+    Array.isArray(input.matcherValue) &&
+    input.matcherValue.some((value) => typeof value === "string" && value.includes("{") && !matchers.has(value.trim()))
+  ) {
+    throw new ScopeError("Only administrators can use Caddy placeholders in matcher values");
+  }
+  // An active health check dials its own port, like the HTTP path.
+  assertNoAdminApiHealthCheck(input.loadBalancer?.activeHealthCheck?.port, existing?.loadBalancer?.activeHealthCheck?.port);
+}
+
+const L4_LISTEN_ADDRESS = /^(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9.-]*):\d{1,5}$/;
+
+// ── Settings ──────────────────────────────────────────────────────────
+
+/**
+ * The settings groups whose text Caddy expands placeholders in when it loads
+ * the configuration: the ACME contact and directory, and DNS provider
+ * credentials. {env.…} and {file.…} there read the Caddy container's
+ * environment and files (its saved configuration holds every secret) and
+ * send them to the address the same settings name.
+ */
+const PLACEHOLDER_SETTINGS_GROUPS: ReadonlySet<string> = new Set(["general", "acme", "cloudflare", "dns-provider"]);
+
+function hasPlaceholder(value: unknown): boolean {
+  if (typeof value === "string") return value.includes("{");
+  if (Array.isArray(value)) return value.some(hasPlaceholder);
+  if (value && typeof value === "object") return Object.values(value).some(hasPlaceholder);
+  return false;
+}
+
+/** Checks a settings write by a non-administrator: no Caddy placeholder in the groups Caddy expands them in. */
+export function assertSettingsWriteAllowed(access: Access, group: string, value: unknown): void {
+  if (access.isAdmin || !PLACEHOLDER_SETTINGS_GROUPS.has(group)) return;
+  if (hasPlaceholder(value)) {
+    throw new ScopeError("Only administrators can use Caddy placeholders in these settings");
+  }
 }
 
 // ── Certificates ──────────────────────────────────────────────────────

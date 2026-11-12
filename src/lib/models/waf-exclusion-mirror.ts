@@ -169,3 +169,22 @@ export async function restoreGlobalWafExclusionRows(rows: readonly (typeof wafRu
     if (rows.length > 0) await tx.insert(wafRuleExclusions).values([...rows]);
   });
 }
+
+/** A proxy host's exclusion records, to put back with restoreHostWafExclusionRows. */
+export async function readHostWafExclusionRows(proxyHostId: number): Promise<(typeof wafRuleExclusions.$inferSelect)[]> {
+  return await appDb.select().from(wafRuleExclusions).where(eq(wafRuleExclusions.proxyHostId, proxyHostId));
+}
+
+/**
+ * Replaces a proxy host's exclusion records with `rows` (as read before a
+ * change that Caddy rejected). The list in the host's meta is not rewritten:
+ * the caller restores the host row that held it.
+ */
+export async function restoreHostWafExclusionRows(
+  tx: DbTransaction,
+  proxyHostId: number,
+  rows: readonly (typeof wafRuleExclusions.$inferSelect)[]
+): Promise<void> {
+  await tx.delete(wafRuleExclusions).where(eq(wafRuleExclusions.proxyHostId, proxyHostId));
+  if (rows.length > 0) await tx.insert(wafRuleExclusions).values([...rows]);
+}

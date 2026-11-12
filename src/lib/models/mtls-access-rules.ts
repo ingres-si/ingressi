@@ -4,6 +4,7 @@ import { logAuditEvent } from "../audit";
 import { mtlsAccessRules, proxyHosts } from "../db/schema";
 import { eq, inArray } from "drizzle-orm";
 import { asc, desc, first } from "@/src/lib/db/ops";
+import { stripPlaceholders } from "../caddy-placeholders";
 
 // ── Types ────────────────────────────────────────────────────────────
 
@@ -90,7 +91,8 @@ export async function createMtlsAccessRule(
       .insert(mtlsAccessRules)
       .values({
         proxyHostId: input.proxyHostId,
-        pathPattern: input.pathPattern.trim(),
+        // Caddy expands placeholders in path matchers: none are stored (as for every other path of a host).
+        pathPattern: stripPlaceholders(input.pathPattern).trim(),
         allowedRoleIds: JSON.stringify(input.allowedRoleIds ?? []),
         allowedCertIds: JSON.stringify(input.allowedCertIds ?? []),
         denyAll: input.denyAll ?? false,
@@ -130,7 +132,7 @@ export async function updateMtlsAccessRule(
   const now = nowIso();
   const updates: Partial<typeof mtlsAccessRules.$inferInsert> = { updatedAt: now };
 
-  if (input.pathPattern !== undefined) updates.pathPattern = input.pathPattern.trim();
+  if (input.pathPattern !== undefined) updates.pathPattern = stripPlaceholders(input.pathPattern).trim();
   if (input.allowedRoleIds !== undefined) updates.allowedRoleIds = JSON.stringify(input.allowedRoleIds);
   if (input.allowedCertIds !== undefined) updates.allowedCertIds = JSON.stringify(input.allowedCertIds);
   if (input.denyAll !== undefined) updates.denyAll = input.denyAll;

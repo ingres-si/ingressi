@@ -30,6 +30,8 @@ import {
   MIN_INSTANCE_SYNC_TOKEN_LENGTH,
 } from "@/src/lib/instance-sync-token";
 import { withSettingsUpdateLock } from "@/src/lib/settings-update-lock";
+import { undoSettingsCaddyRejects } from "@/src/lib/settings-rollback";
+import { assertSettingsWriteAllowed } from "@/src/lib/access-scope";
 import { ApiClientError } from "@/src/lib/api-errors";
 import { normalizeRateLimitSettings } from "@/src/lib/caddy-rate-limit";
 import { normalizeProxyProtocolRanges } from "@/src/lib/proxy-protocol";
@@ -44,10 +46,24 @@ type ActionResult = {
 
 const VALID_UPSTREAM_DNS_FAMILIES = ["ipv6", "ipv4", "both"] as const;
 
-function serializedSettingsAction<TArgs extends unknown[], TResult>(
-  action: (...args: TArgs) => Promise<TResult>
-): (...args: TArgs) => Promise<TResult> {
-  return async (...args: TArgs) => withSettingsUpdateLock(() => action(...args));
+/**
+ * A settings action under the settings update lock. Settings Caddy rejects
+ * are not kept: they are put back and the action answers that nothing was
+ * saved, whatever its own answer was (see settings-rollback.ts).
+ */
+function serializedSettingsAction<TArgs extends unknown[]>(
+  action: (...args: TArgs) => Promise<ActionResult>
+): (...args: TArgs) => Promise<ActionResult> {
+  return async (...args: TArgs) =>
+    withSettingsUpdateLock(() =>
+      undoSettingsCaddyRejects(
+        () => action(...args),
+        (message) => {
+          revalidateSettingsPages();
+          return { success: false, message };
+        }
+      )
+    );
 }
 
 /**
@@ -67,7 +83,8 @@ function validateSyncToken(token: string): { valid: boolean; error?: string } {
 
 async function updateGeneralSettingsActionUnlocked(_prevState: ActionResult | null, formData: FormData): Promise<ActionResult> {
   try {
-    await requirePermission("settings:write");
+    const session = await requirePermission("settings:write");
+    assertSettingsWriteAllowed(session.access, "general", [formData.get("primaryDomain"), formData.get("acmeEmail")]);
     const mode = await getInstanceMode();
     const overrideEnabled = formData.get("overrideEnabled") === "on";
     if (mode === "slave" && !overrideEnabled) {
@@ -91,7 +108,8 @@ async function updateGeneralSettingsActionUnlocked(_prevState: ActionResult | nu
 
 async function updateAcmeSettingsActionUnlocked(_prevState: ActionResult | null, formData: FormData): Promise<ActionResult> {
   try {
-    await requirePermission("settings:write");
+    const session = await requirePermission("settings:write");
+    assertSettingsWriteAllowed(session.access, "acme", [formData.get("caUrl"), formData.get("caRootPem")]);
     const mode = await getInstanceMode();
     const overrideEnabled = formData.get("overrideEnabled") === "on";
     if (mode === "slave" && !overrideEnabled) {
@@ -148,7 +166,8 @@ async function updateAcmeSettingsActionUnlocked(_prevState: ActionResult | null,
 
 async function updateCloudflareSettingsActionUnlocked(_prevState: ActionResult | null, formData: FormData): Promise<ActionResult> {
   try {
-    await requirePermission("settings:write");
+    const session = await requirePermission("settings:write");
+    assertSettingsWriteAllowed(session.access, "cloudflare", [formData.get("apiToken"), formData.get("zoneId"), formData.get("accountId")]);
     const mode = await getInstanceMode();
     const overrideEnabled = formData.get("overrideEnabled") === "on";
     if (mode === "slave" && !overrideEnabled) {
@@ -205,7 +224,13 @@ async function updateCloudflareSettingsActionUnlocked(_prevState: ActionResult |
 
 async function updateDnsProviderSettingsActionUnlocked(_prevState: ActionResult | null, formData: FormData): Promise<ActionResult> {
   try {
-    await requirePermission("settings:write");
+    const session = await requirePermission("settings:write");
+    // The submitted credentials; what is already stored is kept as it is.
+    assertSettingsWriteAllowed(
+      session.access,
+      "dns-provider",
+      [...formData.entries()].filter(([key]) => key.startsWith("credential_")).map(([, value]) => (typeof value === "string" ? value : ""))
+    );
     const mode = await getInstanceMode();
     const overrideEnabled = formData.get("overrideEnabled") === "on";
     if (mode === "slave" && !overrideEnabled) {

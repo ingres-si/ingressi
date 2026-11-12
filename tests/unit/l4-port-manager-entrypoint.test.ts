@@ -31,13 +31,24 @@ describe('L4 port manager entrypoint.sh', () => {
     expect(firstApply).toBeLessThan(whileLoop);
   });
 
-  it('pre-loads LAST_TRIGGER after startup apply to avoid double-apply', () => {
-    // After the startup apply, LAST_TRIGGER must be set from the current trigger
-    // file content so the poll loop doesn't re-apply the same trigger again.
+  it('pre-loads LAST_TRIGGER before the startup apply: no double-apply, and no trigger lost', () => {
+    // LAST_TRIGGER is the trigger as it was before the startup apply, so the poll
+    // loop doesn't re-apply it, and does apply one written while that apply ran.
     const lastTriggerInit = lines.findIndex(l => l.includes('LAST_TRIGGER=') && l.includes('TRIGGER_FILE'));
+    const startupApply = lines.findIndex(l => l.includes('Startup: applying existing L4 port override'));
     const whileLoop = lines.findIndex(l => l.includes('while true'));
     expect(lastTriggerInit).toBeGreaterThan(-1);
+    expect(startupApply).toBeGreaterThan(-1);
+    expect(lastTriggerInit).toBeLessThan(startupApply);
     expect(lastTriggerInit).toBeLessThan(whileLoop);
+  });
+
+  it('deletes only the trigger an apply answered', () => {
+    // An unconditional rm would delete a trigger written while the apply ran.
+    expect(script).toContain('APPLY_TRIGGER=$(cat "$TRIGGER_FILE"');
+    expect(script).not.toMatch(/rm -f "\$TRIGGER_FILE"\s*$/m);
+    expect(script).toContain('if [ -n "$APPLY_TRIGGER" ] && mv "$TRIGGER_FILE" "$TRIGGER_FILE.done" 2>/dev/null; then');
+    expect(script).toContain('mv "$TRIGGER_FILE.done" "$TRIGGER_FILE"');
   });
 
   it('only recreates the caddy service', () => {

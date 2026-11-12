@@ -126,6 +126,7 @@ function inEditor(element: ReactElement, editorData: HostEditorData = data(), fo
       group: String,
       role: String,
       clientCertificate: String,
+      ca: String,
       globalWafMode: 'blocking',
     },
     update: () => {},
@@ -361,6 +362,28 @@ describe('host editor sections', () => {
     const user = inEditor(createElement(AdvancedSection), data({ isAdmin: false }));
     expect(user).toContain('Only administrators can change custom Caddy JSON.');
     expect(user).toMatch(/<textarea[^>]*disabled=""[^>]*id="f-reverse-proxy"|<textarea[^>]*id="f-reverse-proxy"[^>]*disabled=""/);
+    // On a host that has some (as this one), the note says what else that means for them.
+    expect(user).toContain('This host has some, so only administrators can add an upstream or another destination to it.');
+    const withoutJson = inEditor(createElement(AdvancedSection), data({ isAdmin: false, host: { ...host, customReverseProxyJson: null, customPreHandlersJson: null } }));
+    expect(withoutJson).toContain('Only administrators can change custom Caddy JSON.');
+    expect(withoutJson.includes('only administrators can add an upstream')).toBe(false);
+  });
+
+  it('Routing: an upstream that is not scheme and host:port is shown as written, and only it gets that choice', () => {
+    const html = inEditor(createElement(RoutingSection), data({ host: { ...host, upstreams: ['unix//run/app.sock', 'http://10.0.0.5:8080'] } }));
+    expect(html).toContain('value="unix//run/app.sock"');
+    expect(html.match(/<option value="" selected="">as written<\/option>/g)).toHaveLength(1);
+    expect(html.match(/as written/g)).toHaveLength(1);
+  });
+
+  it('Security: custom WAF directives are read-only without waf:write', () => {
+    const disabled = /<textarea[^>]*disabled=""[^>]*id="f-waf-directives"|<textarea[^>]*id="f-waf-directives"[^>]*disabled=""/;
+    const without = inEditor(createElement(SecuritySection), data({ canWriteWaf: false }));
+    expect(without).toMatch(disabled);
+    expect(without).toContain('Changing custom directives needs the waf:write permission.');
+    const withWrite = inEditor(createElement(SecuritySection), data({ canWriteWaf: true }));
+    expect(withWrite).not.toMatch(disabled);
+    expect(withWrite).not.toContain('needs the waf:write permission');
   });
 });
 

@@ -50,53 +50,53 @@ describe("normalizeFingerprint", () => {
 describe("resolveAllowedFingerprints", () => {
   it("resolves fingerprints from roles", () => {
     const roleFpMap = new Map<number, Set<string>>([
-      [1, new Set(["fp_a", "fp_b"])],
-      [2, new Set(["fp_c"])],
+      [1, new Set(["aa01", "bb02"])],
+      [2, new Set(["cc03"])],
     ]);
     const certFpMap = new Map<number, string>();
 
     const rule = makeRule({ allowedRoleIds: [1, 2] });
     const result = resolveAllowedFingerprints(rule, roleFpMap, certFpMap);
 
-    expect(result).toEqual(new Set(["fp_a", "fp_b", "fp_c"]));
+    expect(result).toEqual(new Set(["aa01", "bb02", "cc03"]));
   });
 
   it("resolves fingerprints from direct cert IDs", () => {
     const roleFpMap = new Map<number, Set<string>>();
     const certFpMap = new Map<number, string>([
-      [10, "fp_x"],
-      [20, "fp_y"],
+      [10, "e0a1"],
+      [20, "e0b2"],
     ]);
 
     const rule = makeRule({ allowedCertIds: [10, 20] });
     const result = resolveAllowedFingerprints(rule, roleFpMap, certFpMap);
 
-    expect(result).toEqual(new Set(["fp_x", "fp_y"]));
+    expect(result).toEqual(new Set(["e0a1", "e0b2"]));
   });
 
   it("unions both roles and certs", () => {
     const roleFpMap = new Map<number, Set<string>>([
-      [1, new Set(["fp_a"])],
+      [1, new Set(["aa01"])],
     ]);
-    const certFpMap = new Map<number, string>([[10, "fp_b"]]);
+    const certFpMap = new Map<number, string>([[10, "bb02"]]);
 
     const rule = makeRule({ allowedRoleIds: [1], allowedCertIds: [10] });
     const result = resolveAllowedFingerprints(rule, roleFpMap, certFpMap);
 
-    expect(result).toEqual(new Set(["fp_a", "fp_b"]));
+    expect(result).toEqual(new Set(["aa01", "bb02"]));
   });
 
   it("deduplicates when a cert is in a role AND directly allowed", () => {
     const roleFpMap = new Map<number, Set<string>>([
-      [1, new Set(["fp_a"])],
+      [1, new Set(["aa01"])],
     ]);
-    const certFpMap = new Map<number, string>([[10, "fp_a"]]);
+    const certFpMap = new Map<number, string>([[10, "aa01"]]);
 
     const rule = makeRule({ allowedRoleIds: [1], allowedCertIds: [10] });
     const result = resolveAllowedFingerprints(rule, roleFpMap, certFpMap);
 
     expect(result.size).toBe(1);
-    expect(result.has("fp_a")).toBe(true);
+    expect(result.has("aa01")).toBe(true);
   });
 
   it("returns empty set for unknown role/cert IDs", () => {
@@ -114,9 +114,15 @@ describe("resolveAllowedFingerprints", () => {
 
 describe("buildFingerprintCelExpression", () => {
   it("builds CEL expression with sorted fingerprints", () => {
-    const fps = new Set(["fp_b", "fp_a"]);
+    const fps = new Set(["bb02", "aa01"]);
     const expr = buildFingerprintCelExpression(fps);
-    expect(expr).toBe("{http.request.tls.client.fingerprint} in ['fp_a', 'fp_b']");
+    expect(expr).toBe("{http.request.tls.client.fingerprint} in ['aa01', 'bb02']");
+  });
+
+  it("leaves out what is not a fingerprint, so a stored value cannot change what the expression says", () => {
+    const fps = new Set(["ab12", "x'] || true || 'a' in ['a", "{env.SECRET}", "AB12", ""]);
+    expect(buildFingerprintCelExpression(fps)).toBe("{http.request.tls.client.fingerprint} in ['ab12']");
+    expect(buildFingerprintCelExpression(new Set(["' || true || '"]))).toBe("{http.request.tls.client.fingerprint} in []");
   });
 
   it("handles single fingerprint", () => {
@@ -145,7 +151,7 @@ describe("buildMtlsRbacSubroutes", () => {
 
   it("generates allow + deny routes for a role-based rule", () => {
     const roleFpMap = new Map<number, Set<string>>([
-      [1, new Set(["fp_admin"])],
+      [1, new Set(["ad0001"])],
     ]);
     const rules = [makeRule({ allowedRoleIds: [1] })];
 
@@ -159,7 +165,7 @@ describe("buildMtlsRbacSubroutes", () => {
     const allowRoute = result![0] as Record<string, unknown>;
     const match = (allowRoute.match as Record<string, unknown>[])[0];
     expect(match.path).toEqual(["/admin/*"]);
-    expect(match.expression).toContain("fp_admin");
+    expect(match.expression).toContain("ad0001");
     expect(allowRoute.terminal).toBe(true);
 
     // Deny route returns 403
@@ -203,8 +209,8 @@ describe("buildMtlsRbacSubroutes", () => {
 
   it("handles multiple rules with different paths", () => {
     const roleFpMap = new Map<number, Set<string>>([
-      [1, new Set(["fp_admin"])],
-      [2, new Set(["fp_api"])],
+      [1, new Set(["ad0001"])],
+      [2, new Set(["a0b002"])],
     ]);
     const rules = [
       makeRule({ pathPattern: "/admin/*", allowedRoleIds: [1] }),
@@ -219,7 +225,7 @@ describe("buildMtlsRbacSubroutes", () => {
   });
 
   it("uses direct cert fingerprints as overrides", () => {
-    const certFpMap = new Map<number, string>([[42, "fp_special"]]);
+    const certFpMap = new Map<number, string>([[42, "5bec1a"]]);
     const rules = [makeRule({ allowedCertIds: [42] })];
 
     const result = buildMtlsRbacSubroutes(rules, new Map(), certFpMap, baseHandlers, reverseProxy);
@@ -227,7 +233,7 @@ describe("buildMtlsRbacSubroutes", () => {
     expect(result).not.toBeNull();
     const allowRoute = result![0] as Record<string, unknown>;
     const match = (allowRoute.match as Record<string, unknown>[])[0];
-    expect(match.expression).toContain("fp_special");
+    expect(match.expression).toContain("5bec1a");
   });
 
   it("catch-all route includes base handlers + reverse proxy", () => {
@@ -242,7 +248,7 @@ describe("buildMtlsRbacSubroutes", () => {
   });
 
   it("allow route includes base handlers + reverse proxy", () => {
-    const roleFpMap = new Map<number, Set<string>>([[1, new Set(["fp"])]]);
+    const roleFpMap = new Map<number, Set<string>>([[1, new Set(["f0"])]]);
     const rules = [makeRule({ allowedRoleIds: [1] })];
     const result = buildMtlsRbacSubroutes(rules, roleFpMap, new Map(), baseHandlers, reverseProxy);
 
@@ -260,7 +266,7 @@ describe("buildMtlsRbacSubroutes", () => {
   });
 
   it("requires a valid client cert on the catch-all when requested", () => {
-    const roleFpMap = new Map<number, Set<string>>([[1, new Set(["fp_admin"])]]);
+    const roleFpMap = new Map<number, Set<string>>([[1, new Set(["ad0001"])]]);
     const rules = [makeRule({ allowedRoleIds: [1] })];
     const result = buildMtlsRbacSubroutes(rules, roleFpMap, new Map(), baseHandlers, reverseProxy, true);
 
@@ -272,7 +278,7 @@ describe("buildMtlsRbacSubroutes", () => {
   });
 
   it("handles mixed denyAll and role-based rules", () => {
-    const roleFpMap = new Map<number, Set<string>>([[1, new Set(["fp"])]]);
+    const roleFpMap = new Map<number, Set<string>>([[1, new Set(["f0"])]]);
     const rules = [
       makeRule({ pathPattern: "/secret/*", denyAll: true }),
       makeRule({ pathPattern: "/api/*", allowedRoleIds: [1] }),
@@ -288,23 +294,23 @@ describe("buildMtlsRbacSubroutes", () => {
 
     // Second route: allow /api/*
     expect((result![1] as any).match[0].path).toEqual(["/api/*"]);
-    expect((result![1] as any).match[0].expression).toContain("fp");
+    expect((result![1] as any).match[0].expression).toContain("'f0'");
   });
 
   it("handles rule with both roles and certs combined", () => {
-    const roleFpMap = new Map<number, Set<string>>([[1, new Set(["fp_role"])]]);
-    const certFpMap = new Map<number, string>([[42, "fp_cert"]]);
+    const roleFpMap = new Map<number, Set<string>>([[1, new Set(["00e001"])]]);
+    const certFpMap = new Map<number, string>([[42, "ce0001"]]);
     const rules = [makeRule({ allowedRoleIds: [1], allowedCertIds: [42] })];
 
     const result = buildMtlsRbacSubroutes(rules, roleFpMap, certFpMap, baseHandlers, reverseProxy);
     const match = (result![0] as any).match[0];
-    expect(match.expression).toContain("fp_role");
-    expect(match.expression).toContain("fp_cert");
+    expect(match.expression).toContain("00e001");
+    expect(match.expression).toContain("ce0001");
   });
 
   it("preserves base handlers order in generated routes", () => {
     const multiHandlers = [{ handler: "waf" }, { handler: "headers" }, { handler: "auth" }];
-    const roleFpMap = new Map<number, Set<string>>([[1, new Set(["fp"])]]);
+    const roleFpMap = new Map<number, Set<string>>([[1, new Set(["f0"])]]);
     const rules = [makeRule({ allowedRoleIds: [1] })];
 
     const result = buildMtlsRbacSubroutes(rules, roleFpMap, new Map(), multiHandlers, reverseProxy);
@@ -342,13 +348,13 @@ describe("buildFingerprintCelExpression edge cases", () => {
   });
 
   it("handles many fingerprints", () => {
-    const fps = new Set(Array.from({ length: 50 }, (_, i) => `fp_${String(i).padStart(3, "0")}`));
+    const fps = new Set(Array.from({ length: 50 }, (_, i) => `f0${String(i).padStart(3, "0")}`));
     const expr = buildFingerprintCelExpression(fps);
-    expect(expr).toContain("fp_000");
-    expect(expr).toContain("fp_049");
+    expect(expr).toContain("f0000");
+    expect(expr).toContain("f0049");
     // Verify sorted order
-    const idx0 = expr.indexOf("fp_000");
-    const idx49 = expr.indexOf("fp_049");
+    const idx0 = expr.indexOf("f0000");
+    const idx49 = expr.indexOf("f0049");
     expect(idx0).toBeLessThan(idx49);
   });
 });

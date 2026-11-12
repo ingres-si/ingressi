@@ -2,6 +2,9 @@ import { appDb, nowIso, toIso } from "../db";
 import { applyCaddyConfig } from "../caddy";
 import { CaddyApplyError } from "../caddy-apply-error";
 import { RESERVED_L4_PORTS } from "../l4-reserved-ports";
+import { dialAddressPort } from "../caddy-utils";
+import { validateL4CaddyScalars } from "../caddy-input-validation";
+import { ApiValidationError } from "../api-errors";
 import { logAuditEvent } from "../audit";
 import { l4ProxyHosts } from "../db/schema";
 import { and, eq, count, or, type SQL } from "drizzle-orm";
@@ -9,7 +12,8 @@ import { brandName } from "@/ee/white-label/store";
 import { normalizeTags, parseStoredTags, serializeTags } from "../host-tags";
 import { tagsMatchAny } from "../host-tag-filter";
 import { assertHostCreateApproved, assertHostDeleteApproved, assertHostUpdateApproved } from "@/ee/approvals/guard";
-import { asc, containsText, desc } from "@/src/lib/db/ops";
+import { asc, containsText, desc, first } from "@/src/lib/db/ops";
+import { applyOrUndo, caddyAcceptedLastApply } from "../rejected-apply";
 
 export type L4Protocol = "tcp" | "udp";
 export type L4MatcherType = "none" | "tls_sni" | "http_host" | "proxy_protocol";
@@ -389,16 +393,16 @@ export {
 function validateL4Input(input: L4ProxyHostInput | Partial<L4ProxyHostInput>, isCreate: boolean) {
   if (isCreate) {
     if (!input.name?.trim()) {
-      throw new Error("Name is required");
+      throw new ApiValidationError("Name is required");
     }
     if (!input.protocol || !VALID_PROTOCOLS.includes(input.protocol)) {
-      throw new Error("Protocol must be 'tcp' or 'udp'");
+      throw new ApiValidationError("Protocol must be 'tcp' or 'udp'");
     }
     if (!input.listenAddress?.trim()) {
-      throw new Error("Listen address is required");
+      throw new ApiValidationError("Listen address is required");
     }
     if (!input.upstreams || input.upstreams.length === 0) {
-      throw new Error("At least one upstream must be specified");
+      throw new ApiValidationError("At least one upstream must be specified");
     }
   }
 
@@ -407,49 +411,68 @@ function validateL4Input(input: L4ProxyHostInput | Partial<L4ProxyHostInput>, is
     // Must be :PORT or HOST:PORT
     const portMatch = addr.match(/:(\d+)$/);
     if (!portMatch) {
-      throw new Error("Listen address must be in format ':PORT' or 'HOST:PORT'");
+      throw new ApiValidationError("Listen address must be in format ':PORT' or 'HOST:PORT'");
     }
     const port = parseInt(portMatch[1], 10);
     if (port < 1 || port > 65535) {
-      throw new Error("Port must be between 1 and 65535");
+      throw new ApiValidationError("Port must be between 1 and 65535");
     }
     if ((RESERVED_L4_PORTS as readonly number[]).includes(port)) {
-      throw new Error(
+      throw new ApiValidationError(
         `Port ${port} is reserved for ${brandName()}'s own Caddy listeners (HTTP 80/443, admin API 2019) and cannot be used for L4 proxy hosts. Choose a different port.`
       );
     }
   }
 
   if (input.protocol !== undefined && !VALID_PROTOCOLS.includes(input.protocol)) {
-    throw new Error("Protocol must be 'tcp' or 'udp'");
+    throw new ApiValidationError("Protocol must be 'tcp' or 'udp'");
   }
 
   if (input.matcherType !== undefined && !VALID_MATCHER_TYPES.includes(input.matcherType)) {
-    throw new Error(`Matcher type must be one of: ${VALID_MATCHER_TYPES.join(", ")}`);
+    throw new ApiValidationError(`Matcher type must be one of: ${VALID_MATCHER_TYPES.join(", ")}`);
   }
 
   if (input.matcherType === "tls_sni" || input.matcherType === "http_host") {
     if (!input.matcherValue || input.matcherValue.length === 0) {
-      throw new Error("Matcher value is required for TLS SNI and HTTP Host matchers");
+      throw new ApiValidationError("Matcher value is required for TLS SNI and HTTP Host matchers");
     }
   }
 
   if (input.tlsTermination && input.protocol === "udp") {
-    throw new Error("TLS termination is only supported with TCP protocol");
+    throw new ApiValidationError("TLS termination is only supported with TCP protocol");
   }
 
   if (input.proxyProtocolVersion !== undefined && input.proxyProtocolVersion !== null) {
     if (!VALID_PROXY_PROTOCOL_VERSIONS.includes(input.proxyProtocolVersion)) {
-      throw new Error("Proxy protocol version must be 'v1' or 'v2'");
+      throw new ApiValidationError("Proxy protocol version must be 'v1' or 'v2'");
     }
   }
 
   if (input.upstreams) {
     for (const upstream of input.upstreams) {
       if (!upstream.includes(":")) {
-        throw new Error(`Upstream '${upstream}' must be in 'host:port' format`);
+        throw new ApiValidationError(`Upstream '${upstream}' must be in 'host:port' format`);
+      }
+      // Caddy's layer4 app checks upstream ports when it loads the
+      // configuration: a bad one would make every later apply fail.
+      // Placeholders are left to Caddy (only administrators may use them).
+      const port = dialAddressPort(upstream);
+      if (!upstream.includes("{") && (port === null || !/^\d{1,5}$/.test(port) || Number(port) < 1 || Number(port) > 65535)) {
+        throw new ApiValidationError(`Upstream '${upstream}' must end in a port between 1 and 65535`);
       }
     }
+  }
+
+  validateL4CaddyScalars(input);
+  // A raw meta object is stored as given: check what it holds the same way.
+  if (input.meta !== undefined && input.meta !== null) {
+    if (typeof input.meta !== "object" || Array.isArray(input.meta)) {
+      throw new ApiValidationError("meta must be an object");
+    }
+    validateL4CaddyScalars({
+      loadBalancer: hydrateL4LoadBalancer(input.meta.load_balancer),
+      geoblock: input.meta.geoblock,
+    });
   }
 }
 
@@ -521,6 +544,7 @@ export async function createL4ProxyHost(input: L4ProxyHostInput, actorUserId: nu
   const tags = normalizeTags(input.tags);
   // Change approvals (ee): a host a policy protects is only created through an approved change request.
   await assertHostCreateApproved("l4_proxy_host", input.name, tags);
+  const acceptedBefore = await caddyAcceptedLastApply();
 
   const now = nowIso();
   const [record] = await appDb
@@ -566,7 +590,22 @@ export async function createL4ProxyHost(input: L4ProxyHostInput, actorUserId: nu
   });
 
   try {
-    await applyCaddyConfig();
+    await applyOrUndo({
+      actorUserId,
+      acceptedBefore,
+      what: "L4 host",
+      // A host Caddy rejects is not kept (see rejected-apply.ts).
+      undo: async () => {
+        await appDb.delete(l4ProxyHosts).where(eq(l4ProxyHosts.id, record.id));
+        await logAuditEvent({
+          userId: actorUserId,
+          action: "delete",
+          entityType: "l4_proxy_host",
+          entityId: record.id,
+          summary: `Removed L4 proxy host ${input.name} again: Caddy rejected the configuration with it`,
+        });
+      },
+    });
   } catch (error) {
     // The host is stored: say which one, so the caller can tell it was saved but is not live yet.
     if (error instanceof CaddyApplyError) error.l4ProxyHostId = record.id;
@@ -605,6 +644,9 @@ export async function updateL4ProxyHost(id: number, input: Partial<L4ProxyHostIn
 
   validateL4Input(input, false);
   const tags = input.tags !== undefined ? normalizeTags(input.tags) : undefined;
+  // What is put back if Caddy rejects the configuration with this change.
+  const acceptedBefore = await caddyAcceptedLastApply();
+  const previousRow = await first(appDb.select().from(l4ProxyHosts).where(eq(l4ProxyHosts.id, id)).limit(1));
 
   const now = nowIso();
   await appDb
@@ -702,7 +744,24 @@ export async function updateL4ProxyHost(id: number, input: Partial<L4ProxyHostIn
     data: input,
   });
 
-  await applyCaddyConfig();
+  await applyOrUndo({
+    actorUserId,
+    acceptedBefore,
+    what: "L4 host",
+    undo: async () => {
+      if (!previousRow) return;
+      const { id: _id, ...columns } = previousRow;
+      void _id;
+      await appDb.update(l4ProxyHosts).set(columns).where(eq(l4ProxyHosts.id, id));
+      await logAuditEvent({
+        userId: actorUserId,
+        action: "update",
+        entityType: "l4_proxy_host",
+        entityId: id,
+        summary: `Undid the update of L4 proxy host ${existing.name}: Caddy rejected the configuration with it`,
+      });
+    },
+  });
   return (await getL4ProxyHost(id))!;
 }
 

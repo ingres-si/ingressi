@@ -14,6 +14,9 @@ import {
   parseUpstreamTarget,
   toDurationMs,
   escapeHostPlaceholders,
+  authentikOutpostDial,
+  authentikAuthDial,
+  forwardAuthDial,
 } from "./caddy-utils";
 import {
   groupHostPatternsByPriority,
@@ -59,6 +62,7 @@ import { isReservedL4Port } from "./l4-reserved-ports";
 import { buildDnsChallengeConfig, type DnsProviderCredentials } from "./dns-providers";
 import { parseStoredCertificateProviderOptions } from "./certificate-provider-options";
 import { syncInstances } from "./instance-sync";
+import { noteCaddyApplyFailure } from "./apply-observer";
 import { deferCaddyApplyToBatch } from "./change-batch";
 import { recordConfigSnapshotAfterApply } from "@/ee/config-history/snapshots";
 import { loadMonetizationForCaddy, type MonetizationCaddyOptions } from "@/ee/monetization/caddy-config";
@@ -113,6 +117,7 @@ import { decryptSecret } from "./secret";
 import {
   CaddyApplyError,
   describeCaddyRejection,
+  locateCaddyRejection,
   logCaddyApplyFailure,
   safeSystemErrorCode,
 } from "./caddy-apply-error";
@@ -1614,16 +1619,7 @@ async function buildProxyRoutes(
     // Authentik outpost handler will be added later after protected paths
     let outpostRoute: CaddyHttpRoute | null = null;
     if (authentik) {
-      // Parse the outpost upstream URL to extract host:port for Caddy's dial field
-      let outpostDial: string;
-      try {
-        const url = new URL(authentik.outpostUpstream);
-        const port = url.port || (url.protocol === "https:" ? "443" : "80");
-        outpostDial = `${url.hostname}:${port}`;
-      } catch {
-        // If URL parsing fails, try to extract host:port from string
-        outpostDial = authentik.outpostUpstream.replace(/^https?:\/\//, "").replace(/\/$/, "");
-      }
+      const outpostDial = authentikOutpostDial(authentik.outpostUpstream);
 
       const outpostHandler: Record<string, unknown> = {
         handler: "reverse_proxy",
@@ -1776,11 +1772,7 @@ async function buildProxyRoutes(
         ? ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.0/8", "fd00::/8", "::1/128"]
         : authentik.trustedProxies;
 
-      // Parse the outpost upstream to extract host:port for dial
-      // Remove http://, https://, and any trailing slashes
-      let dialAddress = authentik.outpostUpstream.replace(/^https?:\/\//, "").replace(/\/$/, "");
-      // Remove any path portion if accidentally included
-      dialAddress = dialAddress.split("/")[0];
+      const dialAddress = authentikAuthDial(authentik.outpostUpstream);
 
       const forwardAuthHandler: Record<string, unknown> = {
         handler: "reverse_proxy",
@@ -3284,7 +3276,7 @@ async function buildCaddyDocumentFromDatabase() {
 
   // Build domain → CA cert IDs map for mTLS-enabled hosts.
   // New model (trusted_client_cert_ids + trusted_role_ids): derive CAs from selected certs and pin to those certs.
-  // Old model (ca_certificate_ids): trust entire CAs as before.
+  // CA model (ca_certificate_ids): trust entire CAs. Ignored when certs or roles resolve (Caddy cannot pin leaves for some CAs only).
   const mTlsDomainMap = new Map<string, number[]>();
   // Per-domain override: which specific leaf cert PEMs to pin (new model only)
   const mTlsDomainLeafOverride = new Map<string, string[]>();
@@ -3347,7 +3339,8 @@ async function buildCaddyDocumentFromDatabase() {
         }
       }
     } else if (meta.mtls.ca_certificate_ids?.length) {
-      // Legacy model: trust entire CAs (backward compat)
+      // CA model (ca_certificate_ids): trust every client certificate the chosen CAs sign.
+      // Imported CAs trust all of them; CAs with issued certs honour revocation.
       for (const domain of domains) {
         mTlsDomainMap.set(domain, meta.mtls.ca_certificate_ids);
       }
@@ -3537,7 +3530,7 @@ async function buildCaddyDocumentFromDatabase() {
           handle: [
             {
               handler: "reverse_proxy",
-              upstreams: [{ dial: "localhost:2019" }],
+              upstreams: [{ dial: config.caddyAdminSocket ? `unix/${config.caddyAdminSocket}` : "localhost:2019" }],
               rewrite: {
                 uri: "/metrics"
               }
@@ -3627,10 +3620,14 @@ async function buildCaddyDocumentFromDatabase() {
   const storage = await resolveCaddyStorage();
 
   return {
-    admin: {
-      listen: "0.0.0.0:2019",
-      origins: ["caddy:2019", "localhost:2019", "localhost"]
-    },
+    // Over a unix socket when configured (no TCP admin port for proxied
+    // traffic in the Caddy container to dial); origins are ignored there.
+    admin: config.caddyAdminSocket
+      ? { listen: `unix/${config.caddyAdminSocket}|0660` }
+      : {
+          listen: "0.0.0.0:2019",
+          origins: ["caddy:2019", "localhost:2019", "localhost"]
+        },
     ...(storage ? { storage } : {}),
     ...loggingApp,
     apps: {
@@ -3673,6 +3670,9 @@ const CADDY_UNREACHABLE_CODES = new Set([
   "ECONNREFUSED",
   "EHOSTUNREACH",
   "ENETUNREACH",
+  // The admin socket: not created yet, or not readable by this process.
+  "ENOENT",
+  "EACCES",
   CADDY_CONNECT_TIMEOUT_CODE,
 ]);
 
@@ -3687,11 +3687,11 @@ function timeoutError(message: string, code: string): Error {
  * Bun's ClientRequest neither reports the connection nor fails when it is
  * destroyed while connecting, so the check is a connection of its own.
  */
-function connectToCaddy(url: URL): Promise<void> {
+function connectToCaddy(url: URL, socketPath: string | null): Promise<void> {
   const port = Number(url.port || (url.protocol === "https:" ? 443 : 80));
   const host = url.hostname.replace(/^\[(.*)\]$/, "$1");
   return new Promise((resolve, reject) => {
-    const socket = netConnect({ host, port });
+    const socket = socketPath ? netConnect({ path: socketPath }) : netConnect({ host, port });
     let timer: ReturnType<typeof setTimeout> | null = null;
     const done = (error?: Error) => {
       if (timer) clearTimeout(timer);
@@ -3717,7 +3717,18 @@ function connectToCaddy(url: URL): Promise<void> {
 async function caddyRequest(url: string, method: string, body?: string): Promise<{ status: number; text: string }> {
   const timeoutMs = method === "GET" ? CADDY_READ_TIMEOUT_MS : CADDY_LOAD_TIMEOUT_MS;
   const parsed = new URL(url);
-  await connectToCaddy(parsed);
+  let socketPath = config.caddyAdminSocket;
+  try {
+    await connectToCaddy(parsed, socketPath);
+  } catch (error) {
+    // No Caddy on the socket: one that resumed a configuration saved before
+    // the socket was set up still listens on the TCP port. The next apply
+    // moves it to the socket.
+    const code = safeSystemErrorCode(error);
+    if (!socketPath || (code !== "ENOENT" && code !== "ECONNREFUSED")) throw error;
+    socketPath = null;
+    await connectToCaddy(parsed, socketPath);
+  }
   return await new Promise((resolve, reject) => {
     let settled = false;
     let timer: ReturnType<typeof setTimeout> | null = null;
@@ -3730,11 +3741,12 @@ async function caddyRequest(url: string, method: string, body?: string): Promise
     const lib = parsed.protocol === "https:" ? https : http;
     const req = lib.request(
       {
-        hostname: parsed.hostname,
-        port: parsed.port,
+        ...(socketPath ? { socketPath } : { hostname: parsed.hostname, port: parsed.port }),
         path: parsed.pathname + parsed.search,
         method,
         headers: {
+          // A fixed Host for the socket: Caddy's admin origin check wants a known value, not the dial path.
+          ...(socketPath ? { Host: "localhost" } : {}),
           ...(body ? { "Content-Type": "application/json", "Content-Length": Buffer.byteLength(body) } : {})
         }
       },
@@ -3831,11 +3843,16 @@ type LockedApplyOutcome = "applied" | "lock-lost";
 async function applyHoldingLock(signal: AbortSignal): Promise<LockedApplyOutcome> {
   const state = await readCaddyApplyState();
   // A failure is recorded for alerting; when even that fails, the apply's own error is what the caller gets.
-  const applyFailed = async (message: string, code: CaddyApplyFailureCode & CaddyApplyError["code"]) => {
-    await recordCaddyApplyResult({ ok: false, code, message }, { since: state.generation }).catch((error: unknown) =>
+  // `rejectedAt` names the host Caddy stopped at: recorded for the people who see the apply state
+  // (settings:read, alert channels), and kept apart from the message a writer with a tag scope gets.
+  const applyFailed = async (message: string, code: CaddyApplyFailureCode & CaddyApplyError["code"], rejectedAt: string | null = null) => {
+    const recorded = rejectedAt ? `${message} (${rejectedAt})` : message;
+    await recordCaddyApplyResult({ ok: false, code, message: recorded }, { since: state.generation }).catch((error: unknown) =>
       logCaddyApplyFailure("Recording the failed Caddy apply failed", error)
     );
-    return new CaddyApplyError(message, code);
+    const failure = new CaddyApplyError(message, code);
+    if (rejectedAt) failure.rejectedAt = rejectedAt;
+    return failure;
   };
 
   let document: Awaited<ReturnType<typeof buildCaddyDocument>>;
@@ -3880,7 +3897,8 @@ async function applyHoldingLock(signal: AbortSignal): Promise<LockedApplyOutcome
     }
 
     if (response.status < 200 || response.status >= 300) {
-      const reason = describeCaddyRejection(response.text);
+      const place = locateCaddyRejection(response.text, document);
+      const reason = describeCaddyRejection(response.text) ?? (place ? `the problem is in ${place.summary}` : null);
       logCaddyApplyFailure("Caddy rejected configuration", undefined, {
         status: response.status,
         responseBytes: Buffer.byteLength(response.text),
@@ -3888,7 +3906,8 @@ async function applyHoldingLock(signal: AbortSignal): Promise<LockedApplyOutcome
       });
       throw await applyFailed(
         reason ? `Caddy rejected configuration: ${reason}` : "Caddy rejected configuration",
-        "CADDY_REJECTED"
+        "CADDY_REJECTED",
+        place?.host ?? null
       );
     }
 
@@ -3924,6 +3943,16 @@ async function applyHoldingLock(signal: AbortSignal): Promise<LockedApplyOutcome
 export async function applyCaddyConfig() {
   // Inside a change batch (e.g. an import) the batch applies once at the end.
   if (deferCaddyApplyToBatch()) return;
+  try {
+    await applyCaddyConfigNow();
+  } catch (error) {
+    // A settings action that answers "saved, but not applied" still has its settings taken back (settings-rollback.ts).
+    noteCaddyApplyFailure(error);
+    throw error;
+  }
+}
+
+async function applyCaddyConfigNow() {
   let outcome = await withCoalescedClusterLock(CADDY_APPLY_LOCK, (lock) => applyHoldingLock(lock.signal));
   if (outcome === "lock-lost") {
     // Another replica may have pushed while this apply ran without the lock:
@@ -4001,7 +4030,8 @@ function parseAuthentikConfig(meta: ProxyHostAuthentikMeta | undefined | null): 
     return null;
   }
 
-  const outpostDomain = typeof meta.outpost_domain === "string" ? meta.outpost_domain.trim() : "";
+  // Placeholders are stripped: the domain also forms the forward-auth rewrite URI, where Caddy would expand them.
+  const outpostDomain = typeof meta.outpost_domain === "string" ? stripPlaceholders(meta.outpost_domain).trim() : "";
   const outpostUpstream = typeof meta.outpost_upstream === "string" ? meta.outpost_upstream.trim() : "";
   if (!outpostDomain || !outpostUpstream) {
     return null;
@@ -4067,15 +4097,8 @@ function parseForwardAuthConfig(meta: ForwardAuthMeta | undefined | null): Forwa
     return null;
   }
 
-  let dialAddress: string;
-  try {
-    const url = new URL(upstreamRaw);
-    if (url.protocol !== "http:" && url.protocol !== "https:") {
-      return null;
-    }
-    const port = url.port || (url.protocol === "https:" ? "443" : "80");
-    dialAddress = `${url.hostname}:${port}`;
-  } catch {
+  const dialAddress = forwardAuthDial(upstreamRaw);
+  if (dialAddress === null) {
     return null;
   }
 

@@ -354,6 +354,48 @@ function MtlsCard() {
       {m.enabled && (
         <>
           {data.canChooseTrust && (
+            <SegmentedField
+              id="f-mtls-mode"
+              label="Trust"
+              value={m.trustMode}
+              onChange={(trustMode) => set({ trustMode })}
+              options={[
+                { value: "identity", label: "Roles and certificates" },
+                { value: "ca", label: "Certificate authority" },
+              ]}
+              hint={
+                m.trustMode === "ca"
+                  ? "Any client certificate signed by a chosen authority gets in, with no need to list each one. Use it for an authority you import, such as Cloudflare's origin pull CA."
+                  : "Only the chosen roles and certificates get in. Certificates must come from an authority generated here."
+              }
+            />
+          )}
+          {data.canChooseTrust && m.trustMode === "ca" && (
+            <div className="flex flex-col gap-1">
+              <span className="text-[13px] font-medium">Trusted certificate authorities</span>
+              {data.caCertificates.length === 0 ? (
+                <span className="text-[13px] text-muted-foreground">No certificate authorities yet. Import one under Certificates.</span>
+              ) : (
+                <ul id="f-mtls-cas" className="m-0 list-none rounded-lg border border-line p-0">
+                  {data.caCertificates.map((ca) => (
+                    <li key={ca.id} className="border-b border-line last:border-b-0">
+                      <label className="flex cursor-pointer items-center gap-2.5 px-3 py-2 text-[13px] hover:bg-panel2">
+                        <Checkbox checked={m.caIds.includes(ca.id)} onCheckedChange={() => set({ caIds: toggle(m.caIds, ca.id) })} />
+                        <span className="min-w-0 flex-1">{ca.name}</span>
+                        <span className="text-xs text-soft">{ca.issuesHere ? "Issues certificates here" : "Accepts everything it signs"}</span>
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {m.caIds.some((id) => data.caCertificates.find((ca) => ca.id === id && ca.issuesHere)) && (
+                <p className="m-0 text-xs leading-4 text-soft">
+                  For an authority that issues certificates here, only its client certificates that are not revoked get in, and a revoked one is refused at once. For the others, everything the authority signs gets in, and a single certificate cannot be revoked.
+                </p>
+              )}
+            </div>
+          )}
+          {data.canChooseTrust && m.trustMode === "identity" && (
             <div className="grid grid-cols-[repeat(auto-fit,minmax(min(260px,100%),1fr))] gap-3">
               <div className="flex flex-col gap-1">
                 <span className="text-[13px] font-medium">Trusted roles</span>
@@ -425,7 +467,7 @@ function MtlsCard() {
             onChange={set}
             names={{ protectedPaths: "mtlsProtectedPaths", excludedPaths: "mtlsExcludedPaths" }}
           />
-          {data.mode === "edit" && data.host && data.canChooseTrust && <MtlsAccessRules hostId={data.host.id} roles={data.mtlsRoles} certificates={active} />}
+          {data.mode === "edit" && data.host && data.canChooseTrust && m.trustMode === "identity" && <MtlsAccessRules hostId={data.host.id} roles={data.mtlsRoles} certificates={active} />}
         </>
       )}
     </EditorCard>

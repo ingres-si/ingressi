@@ -22,6 +22,7 @@ import {
 } from "@/src/lib/settings";
 import { getInstanceMode, setInstanceMode, getSlaveMasterToken, setSlaveMasterToken } from "@/src/lib/instance-sync";
 import { applyCaddyConfig } from "@/src/lib/caddy";
+import { caddyRejectionDetail } from "@/src/lib/caddy-apply-error";
 import { DefaultResponseValidationError } from "@/src/lib/caddy-default-response";
 import { instanceSyncTokenValidationError } from "@/src/lib/instance-sync-token";
 import {
@@ -37,6 +38,8 @@ import {
 } from "@/src/lib/settings-validation";
 import { withSettingsUpdateLock } from "@/src/lib/settings-update-lock";
 import { logAuditEvent } from "@/src/lib/audit";
+import { assertSettingsWriteAllowed } from "@/src/lib/access-scope";
+import type { Access } from "@/src/lib/permissions";
 import { readGlobalWafExclusionRows, restoreGlobalWafExclusionRows } from "@/src/lib/models/waf-exclusion-mirror";
 
 type SettingsHandler = {
@@ -153,12 +156,15 @@ export async function PUT(
   try {
     const { group } = await params;
     let actorUserId: number | null = null;
+    let settingsAccess: Access | null = null;
     if (INSTANCE_GROUPS.has(group)) {
       await requireApiPermission(request, "instances:write");
     } else if (WAF_GROUPS.has(group)) {
       actorUserId = (await requireApiPermission(request, "waf:write")).userId;
     } else {
-      actorUserId = (await requireApiPermission(request, "settings:write")).userId;
+      const caller = await requireApiPermission(request, "settings:write");
+      actorUserId = caller.userId;
+      settingsAccess = caller.access;
     }
     let body: unknown;
     try {
@@ -171,6 +177,7 @@ export async function PUT(
       return NextResponse.json({ error: "Settings payload must be an object" }, { status: 400 });
     }
     const input = body as Record<string, unknown>;
+    if (settingsAccess) assertSettingsWriteAllowed(settingsAccess, group, input);
     try {
       assertSettingsPayloadSize(input);
     } catch (error) {
@@ -285,8 +292,10 @@ export async function PUT(
             logUnexpectedApiError("Previous Caddy settings reapply failed", restoreApplyError);
           }
 
+          // Why Caddy refused them, when its answer says (a known reason, or where the problem is).
+          const detail = caddyRejectionDetail(applyError, { withHost: true });
           return NextResponse.json(
-            { error: "Failed to apply Caddy configuration; settings were rolled back" },
+            { error: `Failed to apply Caddy configuration; settings were rolled back${detail ? `: ${detail}` : ""}` },
             { status: 502 }
           );
         }

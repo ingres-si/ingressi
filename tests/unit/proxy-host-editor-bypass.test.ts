@@ -155,6 +155,7 @@ const lookup: ChangeLookup = {
   group: String,
   role: String,
   clientCertificate: String,
+  ca: String,
   globalWafMode: 'blocking',
 };
 const context = { nameSection: 'advanced' as const, dnsProviderConfigured: false, canChooseTrust: true };

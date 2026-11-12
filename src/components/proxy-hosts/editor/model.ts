@@ -30,7 +30,13 @@ import { hostModeOf, withHostMode, type WafHostMode } from "@/lib/waf-host-mode"
 // ── Constants ─────────────────────────────────────────────────────────
 
 export const SCHEMES = ["http://", "https://"] as const;
-export type Scheme = (typeof SCHEMES)[number];
+/**
+ * "" is an upstream kept as it is written: one that is not scheme plus
+ * host:port (a unix socket, a Caddy placeholder, a name without a port), which
+ * a scheme in front would turn into another address.
+ */
+export const AS_WRITTEN = "";
+export type Scheme = (typeof SCHEMES)[number] | typeof AS_WRITTEN;
 
 export const LB_POLICIES: { value: LoadBalancingPolicy; label: string; description: string }[] = [
   { value: "random", label: "Random", description: "Picks any healthy upstream at random." },
@@ -172,8 +178,15 @@ export type MtlsForm = {
   roleIds: number[];
   protectedPaths: string;
   excludedPaths: string;
-  /** CA certificates trusted by the old model; kept as they are. */
-  legacyCaIds: number[];
+  /**
+   * What the host trusts: the chosen roles and client certificates ("identity"),
+   * or any client certificate signed by the chosen certificate authorities ("ca").
+   * Caddy pins either leaf certificates or whole CAs for a host, never both, so
+   * only the fields of the chosen mode are saved.
+   */
+  trustMode: "identity" | "ca";
+  /** Certificate authorities whose signed client certificates are all trusted ("ca" mode). */
+  caIds: number[];
 };
 
 export type PathBlockRow = { key: string; path: string; status: PathBlockStatusCode; body: string };
@@ -274,10 +287,14 @@ function integer(value: string): number | null {
 
 const numText = (value: number | null | undefined): string => (typeof value === "number" ? String(value) : "");
 
+/** host:port or [IPv6]:port. Caddy dials it the same with "http://" in front, so the form shows it with that scheme. */
+const HOST_AND_PORT = /^(\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9._-]+):\d{1,5}$/;
+
 export function parseUpstream(upstream: string): { scheme: Scheme; address: string } {
   if (upstream.startsWith("https://")) return { scheme: "https://", address: upstream.slice(8) };
   if (upstream.startsWith("http://")) return { scheme: "http://", address: upstream.slice(7) };
-  return { scheme: "http://", address: upstream };
+  if (HOST_AND_PORT.test(upstream.trim())) return { scheme: "http://", address: upstream };
+  return { scheme: AS_WRITTEN, address: upstream };
 }
 
 export function upstreamRows(upstreams: readonly string[]): UpstreamRow[] {
@@ -623,7 +640,12 @@ export function hostToForm(host: ProxyHost, context: FormContext = {}): HostForm
       roleIds: [...(mtls?.trusted_role_ids ?? [])],
       protectedPaths: mtls?.protected_paths?.join(", ") ?? "",
       excludedPaths: mtls?.excluded_paths?.join(", ") ?? "",
-      legacyCaIds: [...(mtls?.ca_certificate_ids ?? [])],
+      // Roles and certificates win over CAs when both are stored (that is what Caddy gets).
+      trustMode:
+        (mtls?.ca_certificate_ids?.length ?? 0) > 0 && !(mtls?.trusted_client_cert_ids?.length || mtls?.trusted_role_ids?.length)
+          ? "ca"
+          : "identity",
+      caIds: [...(mtls?.ca_certificate_ids ?? [])],
     },
     pathBlocks: host.pathBlocks.map((rule) => ({ key: rowKey("pb"), path: rule.path, status: rule.status, body: rule.body ?? "" })),
     pathAllows: host.pathAllows.map((rule) => ({ key: rowKey("pa"), path: rule.path })),
@@ -681,7 +703,7 @@ export function newHostForm(
     authentik: authentikForm(null, context.authentikDefaults),
     forwardAuth: genericForm(null, context.forwardAuthDefaults),
     ingressi: { protectedPaths: "", excludedPaths: "", bypassSources: "", userIds: [], groupIds: [] },
-    mtls: { enabled: false, certIds: [], roleIds: [], protectedPaths: "", excludedPaths: "", legacyCaIds: [] },
+    mtls: { enabled: false, certIds: [], roleIds: [], protectedPaths: "", excludedPaths: "", trustMode: "identity", caIds: [] },
     pathBlocks: [],
     pathAllows: [],
     certificateId: null,
@@ -701,12 +723,12 @@ export function newHostForm(
 
 /**
  * The starting form of a copy of `template`: everything but the name (which
- * gets " (copy)"); custom Caddy JSON and client certificate trust only when
- * the user may set them.
+ * gets " (copy)"); custom Caddy JSON, custom WAF directives and client
+ * certificate trust only when the user may set them.
  */
 export function copyHostForm(
   template: ProxyHost,
-  options: { canSetCustomJson: boolean; canChooseTrust: boolean },
+  options: { canSetCustomJson: boolean; canChooseTrust: boolean; canSetWafDirectives?: boolean },
   context: FormContext = {}
 ): HostForm {
   const form = hostToForm(template, { ...context, forwardAuthAccess: null });
@@ -715,8 +737,10 @@ export function copyHostForm(
     form.customPreHandlersJson = "";
     form.customReverseProxyJson = "";
   }
+  // Custom WAF directives need waf:write (assertProxyHostWriteAllowed).
+  if (options.canSetWafDirectives === false) form.wafDirectives = "";
   if (!options.canChooseTrust) {
-    form.mtls = { enabled: false, certIds: [], roleIds: [], protectedPaths: "", excludedPaths: "", legacyCaIds: [] };
+    form.mtls = { enabled: false, certIds: [], roleIds: [], protectedPaths: "", excludedPaths: "", trustMode: "identity", caIds: [] };
   }
   return form;
 }
@@ -844,11 +868,11 @@ function mtlsInput(form: HostForm, base: ProxyHost | null) {
   if (!m.enabled) return base ? null : undefined;
   return {
     enabled: true,
-    trusted_client_cert_ids: [...m.certIds],
-    trusted_role_ids: [...m.roleIds],
+    trusted_client_cert_ids: m.trustMode === "ca" ? [] : [...m.certIds],
+    trusted_role_ids: m.trustMode === "ca" ? [] : [...m.roleIds],
     protected_paths: pathList(m.protectedPaths),
     excluded_paths: pathList(m.excludedPaths),
-    ...(m.legacyCaIds.length > 0 ? { ca_certificate_ids: [...m.legacyCaIds] } : {}),
+    ...(m.trustMode === "ca" && m.caIds.length > 0 ? { ca_certificate_ids: [...m.caIds] } : {}),
   };
 }
 

@@ -13,7 +13,9 @@ import {
   formToInput,
   hostToForm,
   newHostForm,
+  parseUpstream,
   payloadIsEmpty,
+  serializeUpstreams,
   withHealthChecksOn,
   type HostForm,
 } from '@/src/components/proxy-hosts/editor/model';
@@ -80,6 +82,7 @@ const lookup: ChangeLookup = {
   group: (id) => `group${id}`,
   role: (id) => `role${id}`,
   clientCertificate: (id) => `cert${id}`,
+  ca: (id) => `ca${id}`,
   globalWafMode: 'blocking',
 };
 
@@ -92,6 +95,41 @@ describe('host editor payload', () => {
     const stored = host();
     const saved = hostToForm(stored);
     expect(payloadIsEmpty(buildPayload(saved, saved, stored, false))).toBe(true);
+  });
+
+  describe('mTLS trust by certificate authority', () => {
+    const withMtls = (mtls: unknown) => host({ mtls: mtls as never });
+
+    it('opens a host that trusts only CAs in CA mode', () => {
+      const form = hostToForm(withMtls({ enabled: true, ca_certificate_ids: [3] }));
+      expect(form.mtls).toMatchObject({ enabled: true, trustMode: 'ca', caIds: [3] });
+    });
+
+    it('keeps identity mode when roles or certificates are stored beside CAs', () => {
+      const form = hostToForm(withMtls({ enabled: true, trusted_role_ids: [1], ca_certificate_ids: [3] }));
+      expect(form.mtls.trustMode).toBe('identity');
+    });
+
+    it('saves only the CAs in CA mode and only roles/certificates in identity mode', () => {
+      const stored = host();
+      const saved = hostToForm(stored);
+      const ca = edited(saved, (f) => ({ ...f, mtls: { ...f.mtls, enabled: true, trustMode: 'ca', caIds: [3], roleIds: [1], certIds: [2] } }));
+      expect(buildPayload(ca, saved, stored, false).host.mtls).toMatchObject({
+        enabled: true, ca_certificate_ids: [3], trusted_role_ids: [], trusted_client_cert_ids: [],
+      });
+      const identity = edited(saved, (f) => ({ ...f, mtls: { ...f.mtls, enabled: true, trustMode: 'identity', caIds: [3], roleIds: [1] } }));
+      const sent = buildPayload(identity, saved, stored, false).host.mtls as Record<string, unknown>;
+      expect(sent.trusted_role_ids).toEqual([1]);
+      expect(sent).not.toHaveProperty('ca_certificate_ids');
+    });
+
+    it('requires an authority in CA mode, even when roles are still selected', () => {
+      const context = { nameSection: 'advanced' as const, dnsProviderConfigured: false, canChooseTrust: true };
+      const form = edited(hostToForm(host()), (f) => ({ ...f, mtls: { ...f.mtls, enabled: true, trustMode: 'ca', caIds: [], roleIds: [1] } }));
+      expect(validateForm(form, context)['f-mtls'].message).toContain('certificate authority');
+      const ok = edited(form, (f) => ({ ...f, mtls: { ...f.mtls, caIds: [3] } }));
+      expect(validateForm(ok, context)['f-mtls']).toBeUndefined();
+    });
   });
 
   it('sends only the top-level field that changed', () => {
@@ -163,6 +201,45 @@ describe('host editor payload', () => {
     const payload = buildPayload(off, saved, stored, false);
     expect(payload.forwardAuthAccess).toEqual({ userIds: [], groupIds: [] });
     expect(payload.host.ingressiForwardAuth).toEqual({ enabled: false });
+  });
+
+  it('keeps an upstream it cannot show as scheme and host:port exactly as it is written', () => {
+    // A unix socket, a Caddy placeholder and a name without a port: "http://" in front would make Caddy dial something else.
+    const special = ['unix//run/app.sock', '{env.BACKEND}:8080', 'backend'];
+    const stored = host({
+      upstreams: [...special, 'plain:8080', '[::1]:9000', 'http://10.0.0.5:8080', 'https://tls.example.com'],
+      locationRules: [{ path: '/api/*', upstreams: ['unix//run/api.sock', 'api:9000'], loadBalancer: null }],
+    });
+    const saved = hostToForm(stored);
+    expect(saved.upstreams.map((row) => [row.scheme, row.address])).toEqual([
+      ['', 'unix//run/app.sock'],
+      ['', '{env.BACKEND}:8080'],
+      ['', 'backend'],
+      ['http://', 'plain:8080'],
+      ['http://', '[::1]:9000'],
+      ['http://', '10.0.0.5:8080'],
+      ['https://', 'tls.example.com'],
+    ]);
+    expect(serializeUpstreams(saved.upstreams).slice(0, 3)).toEqual(special);
+
+    // Another upstream is added: the whole list is sent, the special ones as they were.
+    const added = edited(saved, (f) => ({ ...f, upstreams: [...f.upstreams, { key: 'new', scheme: 'http://', address: 'extra:8080' }] }));
+    expect(buildPayload(added, saved, stored, false).host.upstreams).toEqual([
+      ...special, 'http://plain:8080', 'http://[::1]:9000', 'http://10.0.0.5:8080', 'https://tls.example.com', 'http://extra:8080',
+    ]);
+    // A location rule changes: its socket stays a socket.
+    const rerouted = edited(saved, (f) => ({ ...f, locationRules: [{ ...f.locationRules[0], path: '/v2/*' }] }));
+    expect(buildPayload(rerouted, saved, stored, false).host.locationRules).toEqual([
+      { path: '/v2/*', upstreams: ['unix//run/api.sock', 'http://api:9000'], loadBalancer: null },
+    ]);
+    // A copy of the host starts with them too.
+    const copy = copyHostForm(stored, { canSetCustomJson: true, canChooseTrust: true });
+    expect(serializeUpstreams(copy.upstreams).slice(0, 3)).toEqual(special);
+
+    // Picking a scheme for such a row is the user's choice, and pasting a URL still brings its scheme.
+    expect(serializeUpstreams([{ key: 'a', scheme: 'https://', address: 'backend' }])).toEqual(['https://backend']);
+    expect(parseUpstream('https://pasted.example.com:8443')).toEqual({ scheme: 'https://', address: 'pasted.example.com:8443' });
+    expect(parseUpstream('http://{env.BACKEND}:8080')).toEqual({ scheme: 'http://', address: '{env.BACKEND}:8080' });
   });
 
   it('sends every field of a new host with the dashboard defaults', () => {

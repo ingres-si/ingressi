@@ -14,20 +14,41 @@
  */
 import { AsyncLocalStorage } from "node:async_hooks";
 
-type ChangeBatchState = { applyRequested: boolean };
+type ChangeBatchState = { applyRequested: boolean; undos: (() => Promise<void>)[] };
 
 const batchGlobal = globalThis as typeof globalThis & {
   __ingressiChangeBatchStorage?: AsyncLocalStorage<ChangeBatchState>;
 };
 const storage = (batchGlobal.__ingressiChangeBatchStorage ??= new AsyncLocalStorage<ChangeBatchState>());
 
-/** Runs `operation` as a change batch; reports whether anything in it asked for a Caddy apply. */
+/**
+ * Runs `operation` as a change batch; reports whether anything in it asked
+ * for a Caddy apply. `undo` takes back the batch's changes that can be taken
+ * back (see registerBatchUndo), latest first, and is null when there are
+ * none (deletions): for the caller's apply, when Caddy rejects the
+ * configuration (applyBatchOrUndo in rejected-apply.ts).
+ */
 export async function runAsChangeBatch<T>(
   operation: () => Promise<T>
-): Promise<{ result: T; applyRequested: boolean }> {
-  const state: ChangeBatchState = { applyRequested: false };
+): Promise<{ result: T; applyRequested: boolean; undo: (() => Promise<void>) | null }> {
+  const state: ChangeBatchState = { applyRequested: false, undos: [] };
   const result = await storage.run(state, operation);
-  return { result, applyRequested: state.applyRequested };
+  const steps = [...state.undos].reverse();
+  const undo = async () => {
+    for (const step of steps) await step();
+  };
+  return { result, applyRequested: state.applyRequested, undo: steps.length > 0 ? undo : null };
+}
+
+/**
+ * Inside a change batch, keeps how to take a stored change back, for the
+ * batch's own apply, and returns true. False outside a batch.
+ */
+export function registerBatchUndo(undo: () => Promise<void>): boolean {
+  const state = storage.getStore();
+  if (!state) return false;
+  state.undos.push(undo);
+  return true;
 }
 
 /** True inside a change batch. */

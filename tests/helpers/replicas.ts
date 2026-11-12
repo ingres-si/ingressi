@@ -110,7 +110,19 @@ export type ClusterNodesView = {
   nodes: Array<{ id: string; status: string; leader: boolean; thisNode: boolean; version: string; schemaVersion: string }>;
 };
 
-/** A client address of its own (a documentation range), so per-client limits of one test never touch another. */
+/** The documentation ranges (RFC 5737): 3 x 254 addresses that are never a real client. */
+const CLIENT_ADDRESS_POOL = ['192.0.2', '198.51.100', '203.0.113'].flatMap((prefix) => Array.from({ length: 254 }, (_, i) => `${prefix}.${i + 1}`));
+let clientAddressCursor = Math.floor(Math.random() * CLIENT_ADDRESS_POOL.length);
+
+/**
+ * A client address of its own, so per-client limits of one test never touch
+ * another. Better Auth allows 3 sign-ins per 10 seconds per address, so two tests
+ * that drew the same address within that window made the second one fail with a
+ * 429. Addresses are handed out in turn, from a random start: none repeats until
+ * the whole pool (762) is used.
+ */
 export function clientAddress(): string {
-  return `198.51.100.${1 + Math.floor(Math.random() * 254)}`;
+  const address = CLIENT_ADDRESS_POOL[clientAddressCursor % CLIENT_ADDRESS_POOL.length];
+  clientAddressCursor += 1;
+  return address;
 }

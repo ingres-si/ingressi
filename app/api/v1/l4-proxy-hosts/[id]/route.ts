@@ -39,7 +39,7 @@ export async function PUT(
     const existing = await getL4ProxyHostInScope(access, routeRowId(id));
     const body = await request.json();
     const tags = tagsForWrite(access, "l4_proxy_hosts", body?.tags, existing.tags);
-    assertL4WriteAllowed(access, body ?? {});
+    assertL4WriteAllowed(access, body ?? {}, existing);
     await assertListenPortFreeOutsideScope(
       access,
       body?.protocol ?? existing.protocol,

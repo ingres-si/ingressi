@@ -31,6 +31,7 @@ export type ChangeLookup = {
   group: (id: number) => string;
   role: (id: number) => string;
   clientCertificate: (id: number) => string;
+  ca: (id: number) => string;
   globalWafMode: string;
 };
 
@@ -210,9 +211,12 @@ function mtlsLines(form: HostForm, lookup: ChangeLookup): string[] {
   if (!m.enabled) return ["Off"];
   return [
     "Required",
-    ...m.roleIds.map((id) => `Role ${lookup.role(id)}`),
-    ...m.certIds.map((id) => `Certificate ${lookup.clientCertificate(id)}`),
-    ...(m.legacyCaIds.length > 0 ? [`${m.legacyCaIds.length} trusted CA certificates (older setting)`] : []),
+    ...(m.trustMode === "ca"
+      ? m.caIds.map((id) => `Any certificate signed by ${lookup.ca(id)}`)
+      : [
+          ...m.roleIds.map((id) => `Role ${lookup.role(id)}`),
+          ...m.certIds.map((id) => `Certificate ${lookup.clientCertificate(id)}`),
+        ]),
     ...pathsLine("Only these paths", m.protectedPaths),
     ...pathsLine("Never these paths", m.excludedPaths),
   ];

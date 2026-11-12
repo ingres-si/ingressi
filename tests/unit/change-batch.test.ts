@@ -8,7 +8,7 @@ import { describe, expect, it, vi } from 'vitest';
 const insertAuditEvent = vi.hoisted(() => vi.fn());
 vi.mock('@/src/lib/audit-chain', () => ({ insertAuditEvent }));
 
-import { inChangeBatch, runAsChangeBatch } from '@/src/lib/change-batch';
+import { inChangeBatch, registerBatchUndo, runAsChangeBatch } from '@/src/lib/change-batch';
 
 describe('runAsChangeBatch', () => {
   it('defers the real Caddy apply to the batch', async () => {
@@ -23,7 +23,18 @@ describe('runAsChangeBatch', () => {
   });
 
   it('reports no apply when nothing asked for one', async () => {
-    expect(await runAsChangeBatch(async () => 1)).toEqual({ result: 1, applyRequested: false });
+    expect(await runAsChangeBatch(async () => 1)).toEqual({ result: 1, applyRequested: false, undo: null });
+  });
+
+  it('hands back the undo steps registered inside it, latest first', async () => {
+    const order: number[] = [];
+    expect(registerBatchUndo(async () => undefined)).toBe(false);
+    const { undo } = await runAsChangeBatch(async () => {
+      expect(registerBatchUndo(async () => void order.push(1))).toBe(true);
+      expect(registerBatchUndo(async () => void order.push(2))).toBe(true);
+    });
+    await undo!();
+    expect(order).toEqual([2, 1]);
   });
 
   it('records no audit events inside a batch, and does outside', async () => {

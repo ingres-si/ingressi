@@ -90,3 +90,83 @@ export function parsePkcs12Identity(bundle: Buffer, password: string): Pkcs12Ide
     privateKeyPem: forge.pki.privateKeyToPem(key),
   };
 }
+
+export interface ExternalCa {
+  certificatePem: string;
+  privateKeyPem: string;
+}
+
+/**
+ * A certificate authority that Ingressi never sees the key of, like Cloudflare's
+ * origin pull CA: import `certificatePem`, sign client certificates with `issueExternalClientCertificate`.
+ */
+export function createExternalCa(commonName: string, validityDays = 30): ExternalCa {
+  const keypair = forge.pki.rsa.generateKeyPair({ bits: 2048 });
+  const cert = forge.pki.createCertificate();
+  cert.publicKey = keypair.publicKey;
+  cert.serialNumber = randomSerialNumber();
+  cert.validity.notBefore = new Date(Date.now() - 60_000);
+  cert.validity.notAfter = new Date(Date.now() + validityDays * 24 * 60 * 60 * 1000);
+  const subject = [
+    { name: 'commonName', value: commonName },
+    { name: 'organizationName', value: 'Ingressi E2E External CA' },
+  ];
+  cert.setSubject(subject);
+  cert.setIssuer(subject);
+  cert.setExtensions([
+    { name: 'basicConstraints', cA: true, critical: true },
+    { name: 'keyUsage', keyCertSign: true, cRLSign: true, critical: true },
+  ]);
+  cert.sign(keypair.privateKey, forge.md.sha256.create());
+  return { certificatePem: forge.pki.certificateToPem(cert), privateKeyPem: forge.pki.privateKeyToPem(keypair.privateKey) };
+}
+
+export function issueExternalClientCertificate(
+  ca: ExternalCa,
+  commonName: string,
+  options: { validityDays?: number; expired?: boolean } = {}
+): Pkcs12Identity {
+  const caCert = forge.pki.certificateFromPem(ca.certificatePem);
+  const caKey = forge.pki.privateKeyFromPem(ca.privateKeyPem);
+  const keypair = forge.pki.rsa.generateKeyPair({ bits: 2048 });
+  const cert = forge.pki.createCertificate();
+  cert.publicKey = keypair.publicKey;
+  cert.serialNumber = randomSerialNumber();
+  const now = Date.now();
+  cert.validity.notBefore = new Date(now - (options.expired ? 3 * 24 * 3600_000 : 60_000));
+  cert.validity.notAfter = new Date(options.expired ? now - 24 * 3600_000 : now + (options.validityDays ?? 30) * 24 * 3600_000);
+  cert.setSubject([{ name: 'commonName', value: commonName }]);
+  cert.setIssuer(caCert.subject.attributes);
+  cert.setExtensions([
+    { name: 'basicConstraints', cA: false },
+    { name: 'keyUsage', digitalSignature: true, critical: true },
+    { name: 'extKeyUsage', clientAuth: true },
+  ]);
+  cert.sign(caKey, forge.md.sha256.create());
+  return { certificatePem: forge.pki.certificateToPem(cert), privateKeyPem: forge.pki.privateKeyToPem(keypair.privateKey) };
+}
+
+let cachedServer: GeneratedCertificate | null = null;
+let cachedCa: ExternalCa | null = null;
+
+/**
+ * A real certificate and key for tests that store an imported certificate
+ * (the models refuse anything Caddy could not load). Generated once per test
+ * file; the PEM text has no trailing line break.
+ */
+export function testServerCertificate(): GeneratedCertificate {
+  if (!cachedServer) {
+    const made = createSelfSignedServerCertificate('fixture.example.com', ['fixture.example.com']);
+    cachedServer = { certificatePem: made.certificatePem.trim(), privateKeyPem: made.privateKeyPem.trim() };
+  }
+  return cachedServer;
+}
+
+/** A real CA certificate and its key for tests that store a CA certificate. Generated once per test file. */
+export function testCa(): ExternalCa {
+  if (!cachedCa) {
+    const made = createExternalCa('Fixture CA');
+    cachedCa = { certificatePem: made.certificatePem.trim(), privateKeyPem: made.privateKeyPem.trim() };
+  }
+  return cachedCa;
+}

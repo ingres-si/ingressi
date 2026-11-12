@@ -68,7 +68,7 @@ function hostEventsHref(domains: readonly string[]): string | null {
 
 /** The WAF settings most hosts never change: which rules, body limits and raw directives. */
 function WafAdvanced() {
-  const { form, update } = useEditor();
+  const { form, update, data } = useEditor();
   const setWaf = (patch: Partial<WafForm>) => update((f) => ({ ...f, waf: { ...f.waf, ...patch } }));
   const directivesProps = useFieldProps("f-waf-directives", true);
   const [templatesOpen, setTemplatesOpen] = useState(false);
@@ -138,10 +138,15 @@ function WafAdvanced() {
           id="f-waf-directives"
           label="Custom SecLang directives"
           was="wafDirectives"
-          hint={`Added after the Core Rule Set. Use rule ids from ${9000 + HOST_TEMPLATE_ID_OFFSET} up for your own rules.`}
+          hint={
+            data.canWriteWaf
+              ? `Added after the Core Rule Set. Use rule ids from ${9000 + HOST_TEMPLATE_ID_OFFSET} up for your own rules.`
+              : "Changing custom directives needs the waf:write permission."
+          }
         >
           <Textarea
             {...directivesProps}
+            disabled={!data.canWriteWaf}
             value={form.wafDirectives}
             onChange={(event) => update((f) => ({ ...f, wafDirectives: event.target.value }))}
             rows={3}
@@ -150,7 +155,7 @@ function WafAdvanced() {
             className="num min-h-[72px] text-xs leading-[18px]"
           />
         </Field>
-        <div>
+        <div hidden={!data.canWriteWaf}>
           <button
             type="button"
             aria-expanded={templatesOpen}

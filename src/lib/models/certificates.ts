@@ -11,7 +11,9 @@ import {
   parseStoredCertificateProviderOptions,
   sanitizeStoredCertificateProviderOptions,
 } from "../certificate-provider-options";
-import { desc } from "@/src/lib/db/ops";
+import { desc, first } from "@/src/lib/db/ops";
+import { applyOrUndo, caddyAcceptedLastApply } from "../rejected-apply";
+import { assertImportedCertificatePem } from "../pem-validation";
 
 export type CertificateType = "managed" | "imported";
 
@@ -70,7 +72,11 @@ export async function getCertificate(id: number): Promise<Certificate | null> {
   return cert ? parseCertificate(cert) : null;
 }
 
-function validateCertificateInput(input: CertificateInput) {
+/**
+ * `checkPem` is false when an update leaves the certificate and key as they
+ * are stored: a certificate from before this check can still be renamed.
+ */
+function validateCertificateInput(input: CertificateInput, checkPem = true) {
   if (!input.domainNames || input.domainNames.length === 0) {
     throw new Error("At least one domain is required for a certificate");
   }
@@ -78,11 +84,14 @@ function validateCertificateInput(input: CertificateInput) {
     if (!input.certificatePem || !input.privateKeyPem) {
       throw new Error("Imported certificates require certificate and key PEM data");
     }
+    // Caddy rejects the whole configuration over a certificate it cannot load.
+    if (checkPem) assertImportedCertificatePem(input.certificatePem, input.privateKeyPem);
   }
 }
 
 export async function createCertificate(input: CertificateInput, actorUserId: number) {
   validateCertificateInput(input);
+  const acceptedBefore = await caddyAcceptedLastApply();
   const now = nowIso();
   const providerOptions = normalizeCertificateProviderOptions(input.providerOptions);
   const [record] = await appDb
@@ -114,7 +123,22 @@ export async function createCertificate(input: CertificateInput, actorUserId: nu
     entityId: record.id,
     summary: `Created certificate ${input.name}`
   });
-  await applyCaddyConfig();
+  // A certificate Caddy cannot load is not kept (see rejected-apply.ts).
+  await applyOrUndo({
+    actorUserId,
+    acceptedBefore,
+    what: "certificate",
+    undo: async () => {
+      await appDb.delete(certificates).where(eq(certificates.id, record.id));
+      await logAuditEvent({
+        userId: actorUserId,
+        action: "delete",
+        entityType: "certificate",
+        entityId: record.id,
+        summary: `Removed certificate ${input.name} again: Caddy rejected the configuration with it`
+      });
+    },
+  });
   return (await getCertificate(record.id))!;
 }
 
@@ -135,7 +159,12 @@ export async function updateCertificate(id: number, input: Partial<CertificateIn
     privateKeyPem: input.privateKeyPem ?? existing.privateKeyPem
   };
 
-  validateCertificateInput(merged);
+  const pemChanged =
+    (input.certificatePem ?? null) !== null || (input.privateKeyPem ?? null) !== null || merged.type !== existing.type;
+  validateCertificateInput(merged, pemChanged);
+  // What is put back if Caddy rejects the configuration with this change.
+  const acceptedBefore = await caddyAcceptedLastApply();
+  const previousRow = await first(appDb.select().from(certificates).where(eq(certificates.id, id)).limit(1));
 
   const now = nowIso();
   const providerOptions = normalizeCertificateProviderOptions(merged.providerOptions);
@@ -160,7 +189,24 @@ export async function updateCertificate(id: number, input: Partial<CertificateIn
     entityId: id,
     summary: `Updated certificate ${merged.name}`
   });
-  await applyCaddyConfig();
+  await applyOrUndo({
+    actorUserId,
+    acceptedBefore,
+    what: "certificate",
+    undo: async () => {
+      if (!previousRow) return;
+      const { id: _id, ...columns } = previousRow;
+      void _id;
+      await appDb.update(certificates).set(columns).where(eq(certificates.id, id));
+      await logAuditEvent({
+        userId: actorUserId,
+        action: "update",
+        entityType: "certificate",
+        entityId: id,
+        summary: `Undid the update of certificate ${existing.name}: Caddy rejected the configuration with it`
+      });
+    },
+  });
   return (await getCertificate(id))!;
 }
 

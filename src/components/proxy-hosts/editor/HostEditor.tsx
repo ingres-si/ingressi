@@ -135,7 +135,11 @@ function initialForm(data: HostEditorData): HostForm {
   };
   if (data.host) return hostToForm(data.host, context);
   if (data.template) {
-    const form = copyHostForm(data.template, { canSetCustomJson: data.isAdmin, canChooseTrust: data.canChooseTrust }, context);
+    const form = copyHostForm(
+      data.template,
+      { canSetCustomJson: data.isAdmin, canChooseTrust: data.canChooseTrust, canSetWafDirectives: Boolean(data.canWriteWaf) },
+      context
+    );
     if (data.initialDomain) form.domains = [data.initialDomain];
     return form;
   }
@@ -200,6 +204,7 @@ export function HostEditor({ data: pageData, workspace }: { data: HostEditorData
       group: (id) => data.groups.find((group) => group.id === id)?.name ?? `#${id}`,
       role: (id) => data.mtlsRoles.find((role) => role.id === id)?.name ?? `#${id}`,
       clientCertificate: (id) => data.clientCertificates.find((certificate) => certificate.id === id)?.commonName ?? `#${id}`,
+      ca: (id) => data.caCertificates.find((ca) => ca.id === id)?.name ?? `CA #${id}`,
       globalWafMode: data.wafGlobal ? GLOBAL_WAF[data.wafGlobal.mode] : "blocking",
     }),
     [data]
@@ -561,6 +566,7 @@ export function HostEditor({ data: pageData, workspace }: { data: HostEditorData
           <Banner tone="info" title={`A copy of ${data.template.name}.`}>
             Change the domains before creating it: two hosts cannot serve the same name.
             {!data.isAdmin && (data.template.customPreHandlersJson || data.template.customReverseProxyJson) ? " Custom Caddy JSON was not copied: only administrators set it." : ""}
+            {!data.canWriteWaf && data.template.waf?.custom_directives?.trim() ? " Custom WAF directives were not copied: they need the waf:write permission." : ""}
             {!data.canChooseTrust && data.template.mtls?.enabled ? " Client certificate settings were not copied: your role cannot choose them." : ""}
           </Banner>
         )}

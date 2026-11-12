@@ -42,11 +42,13 @@ RUN (getent group ${PGID} && groupdel $(getent group ${PGID} | cut -d: -f1) || t
     (getent passwd ${PUID} && userdel $(getent passwd ${PUID} | cut -d: -f1) || true) && \
     groupadd -g ${PGID} caddy && \
     useradd -r -u ${PUID} -g caddy -m -d /home/caddy caddy && \
-    mkdir -p /data /config /logs /acme-ca && \
-    chown -R caddy:caddy /data /config /logs /home/caddy && \
+    mkdir -p /data /config /logs /acme-ca /run/caddy-admin && \
+    chown -R caddy:caddy /data /config /logs /home/caddy /run/caddy-admin && \
+    chmod 0755 /run/caddy-admin && \
     chmod 0777 /acme-ca
 
 COPY --chown=caddy:caddy docker/caddy/Caddyfile /etc/caddy/Caddyfile
+COPY --chmod=0755 docker/caddy/entrypoint.sh /usr/local/bin/caddy-entrypoint.sh
 
 EXPOSE 80 443 2019
 
@@ -57,4 +59,6 @@ ENV XDG_DATA_HOME=/data
 # Run as non-root user (fully rootless)
 USER caddy
 
+# Makes CADDY_ADMIN_LISTEN count on every start, not only the first (see the script).
+ENTRYPOINT ["/usr/local/bin/caddy-entrypoint.sh"]
 CMD ["caddy", "run", "--resume", "--config", "/etc/caddy/Caddyfile", "--adapter", "caddyfile"]
