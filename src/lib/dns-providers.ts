@@ -38,6 +38,11 @@ export type DnsProviderDefinition = {
    * (e.g. "600s", "10m").
    */
   challengeDefaults?: DnsProviderChallengeDefaults;
+  /**
+   * Credential keys stored by older releases, mapped to the key the bundled
+   * Caddy module reads. Stored credentials are renamed on read and on save.
+   */
+  legacyKeys?: Record<string, string>;
 };
 
 /**
@@ -156,8 +161,9 @@ const BASE_DNS_PROVIDERS: DnsProviderDefinition[] = [
     docsUrl: "https://github.com/caddy-dns/digitalocean",
     modulePath: "github.com/caddy-dns/digitalocean",
     fields: [
-      { key: "api_token", label: "API Token", type: "password", required: true },
+      { key: "auth_token", label: "API Token", type: "password", required: true },
     ],
+    legacyKeys: { api_token: "auth_token" },
   },
   {
     name: "duckdns",
@@ -172,11 +178,19 @@ const BASE_DNS_PROVIDERS: DnsProviderDefinition[] = [
   {
     name: "hetzner",
     displayName: "Hetzner",
-    description: "Hetzner DNS API",
+    description: "Hetzner Console DNS (Cloud API)",
     docsUrl: "https://github.com/caddy-dns/hetzner",
-    modulePath: "github.com/caddy-dns/hetzner",
+    modulePath: "github.com/caddy-dns/hetzner/v2",
     fields: [
-      { key: "api_token", label: "API Token", type: "password", required: true },
+      {
+        key: "api_token",
+        label: "API Token",
+        type: "password",
+        required: true,
+        placeholder: "Hetzner Cloud API token with Read & Write permission",
+        description:
+          "Create the token in the Hetzner Console under Security → API tokens, in the project that holds the DNS zone. Tokens from the old DNS Console (dns.hetzner.com) no longer work.",
+      },
     ],
   },
   {
@@ -503,6 +517,34 @@ export function getProviderDefinition(name: string): DnsProviderDefinition | und
 }
 
 /**
+ * Rename credential keys stored by older releases to the key the bundled
+ * Caddy module reads (see `legacyKeys`). A value already stored under the
+ * current key wins. Returns the input unchanged when nothing needs renaming.
+ */
+export function normalizeProviderCredentials<T>(providerName: string, credentials: Record<string, T>): Record<string, T> {
+  const legacyKeys = getProviderDefinition(providerName)?.legacyKeys;
+  if (!legacyKeys || !Object.keys(legacyKeys).some((key) => Object.hasOwn(credentials, key))) {
+    return credentials;
+  }
+  const result = { ...credentials };
+  for (const [legacyKey, key] of Object.entries(legacyKeys)) {
+    if (!Object.hasOwn(result, legacyKey)) continue;
+    if (!result[key]) result[key] = result[legacyKey];
+    delete result[legacyKey];
+  }
+  return result;
+}
+
+/** Apply normalizeProviderCredentials to every provider of a settings value. */
+export function normalizeDnsProviderMap<T>(
+  providers: Record<string, Record<string, T>>
+): Record<string, Record<string, T>> {
+  return Object.fromEntries(
+    Object.entries(providers).map(([name, credentials]) => [name, normalizeProviderCredentials(name, credentials)])
+  );
+}
+
+/**
  * Reduce DNS-provider settings to non-secret metadata before crossing an API
  * response boundary. This intentionally redacts every value, including fields
  * whose registry type is not `password`, so newly-added credential fields are
@@ -637,7 +679,7 @@ export function buildDnsChallengeConfig(
   const def = getProviderDefinition(providerName);
   if (!def) return null;
 
-  const decrypted = decryptProviderCredentials(providerName, credentials);
+  const decrypted = decryptProviderCredentials(providerName, normalizeProviderCredentials(providerName, credentials));
 
   // Build provider config: { name: "cloudflare", api_token: "..." }.
   // Challenge option keys configure the DNS challenge itself, not the

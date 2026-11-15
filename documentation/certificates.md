@@ -71,6 +71,8 @@ Caddy automatically obtains Let's Encrypt certificates for all proxy hosts.
 
 **DNS-01 Challenge** (optional): Configure a DNS provider in **Certificates → Certificate settings** (DNS-01 providers) for wildcard certificates and environments where ports 80/443 are not public. Supported providers: Cloudflare, Route 53, DigitalOcean, Duck DNS, Hetzner, Vultr, Porkbun, PowerDNS, GoDaddy, Namecheap, OVH, IONOS, Linode, Njalla, netcup, Spaceship, deSEC, Bunny, Dynu, acme-dns, Infomaniak, INWX, ClouDNS, and RFC2136 (BIND/TSIG). Credentials are encrypted at rest with AES-256-GCM. You can choose a different DNS provider for a single certificate (see below). The DNS propagation delay and timeout can be set per provider (netcup ships with slow-propagation defaults); a certificate uses the delay and timeout of the provider it is set to.
 
+Hetzner uses the DNS in the Hetzner Console, through the Cloud API: create an API token with Read & Write permission in the project that holds the zone. Tokens from the old DNS Console (dns.hetzner.com) do not work, because Hetzner has shut that API down.
+
 ### Choosing a DNS provider
 
 With a default DNS provider set, every certificate Caddy obtains uses it. When a domain's DNS is hosted elsewhere (the default is Cloudflare and one domain's zone is at GoDaddy), set up the second provider under Certificate settings, then give that domain its own managed certificate:

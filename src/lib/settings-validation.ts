@@ -1,7 +1,7 @@
 import { isIP } from "node:net";
 import { bodyLimitRangeMessage, customDirectivesError, isValidBodyLimit } from "./caddy-waf";
 import { normalizeDefaultResponseSettings } from "./caddy-default-response";
-import { getProviderDefinition, isValidDnsDuration } from "./dns-providers";
+import { getProviderDefinition, isValidDnsDuration, normalizeProviderCredentials } from "./dns-providers";
 import { normalizeRateLimitSettings } from "./caddy-rate-limit";
 import { normalizeResponseHeadersSettings, ResponseHeadersValidationError } from "./caddy-response-headers";
 import { normalizeProxyProtocolRanges } from "./proxy-protocol";
@@ -259,7 +259,11 @@ function validateDnsProvider(value: Record<string, unknown>): void {
   for (const providerName of providerNames) {
     const definition = getProviderDefinition(providerName);
     if (!definition) invalid(`Unsupported DNS provider: ${providerName}`);
-    const credentials = record(providers[providerName], `dns-provider.providers.${providerName}`);
+    // Keys from older releases (legacyKeys) are accepted and renamed on save.
+    const credentials = normalizeProviderCredentials(
+      providerName,
+      record(providers[providerName], `dns-provider.providers.${providerName}`)
+    );
     onlyKeys(credentials, definition.fields.map((field) => field.key), `dns-provider.providers.${providerName}`);
     for (const field of definition.fields) {
       if (field.required) {

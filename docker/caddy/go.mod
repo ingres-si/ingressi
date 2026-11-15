@@ -12,7 +12,7 @@ require (
 	github.com/caddy-dns/duckdns v0.5.0
 	github.com/caddy-dns/dynu v1.0.0
 	github.com/caddy-dns/godaddy v1.2.0
-	github.com/caddy-dns/hetzner v1.0.0
+	github.com/caddy-dns/hetzner/v2 v2.0.1
 	github.com/caddy-dns/infomaniak v1.0.2
 	github.com/caddy-dns/inwx v0.4.1
 	github.com/caddy-dns/ionos v1.3.0
@@ -118,6 +118,7 @@ require (
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.30.0 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-retryablehttp v0.7.8 // indirect
+	github.com/hetznercloud/hcloud-go/v2 v2.37.0 // indirect
 	github.com/huandu/xstrings v1.6.1 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
@@ -139,7 +140,7 @@ require (
 	github.com/libdns/duckdns v0.3.0 // indirect
 	github.com/libdns/dynu v1.0.0 // indirect
 	github.com/libdns/godaddy v1.1.0 // indirect
-	github.com/libdns/hetzner v1.0.0 // indirect
+	github.com/libdns/hetzner/v2 v2.0.1 // indirect
 	github.com/libdns/infomaniak v0.2.0 // indirect
 	github.com/libdns/inwx v0.3.1 // indirect
 	github.com/libdns/ionos v1.3.0 // indirect

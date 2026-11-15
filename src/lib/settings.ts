@@ -3,6 +3,7 @@ import { appDb, nowIso } from "./db";
 import { settings } from "./db/schema";
 import { eq, inArray } from "drizzle-orm";
 import { encryptSecret, isEncryptedSecret } from "./secret";
+import { normalizeDnsProviderMap, normalizeProviderCredentials } from "./dns-providers";
 import { sanitizeErrorPageRules, type ErrorPageRule } from "./models/proxy-hosts";
 import {
   normalizeDefaultResponseSettings,
@@ -404,14 +405,15 @@ export async function getDnsProviderSettings(): Promise<DnsProviderSettings | nu
   if ("provider" in raw && "credentials" in raw && !("providers" in raw)) {
     const name = raw.provider as string;
     const creds = raw.credentials as Record<string, string>;
-    return { providers: { [name]: creds }, default: name };
+    return { providers: { [name]: normalizeProviderCredentials(name, creds) }, default: name };
   }
 
-  return raw as unknown as DnsProviderSettings;
+  const stored = raw as unknown as DnsProviderSettings;
+  return { ...stored, providers: normalizeDnsProviderMap(stored.providers ?? {}) };
 }
 
 export async function saveDnsProviderSettings(settings: DnsProviderSettings): Promise<void> {
-  await setSetting("dns_provider", settings);
+  await setSetting("dns_provider", { ...settings, providers: normalizeDnsProviderMap(settings.providers) });
 }
 
 export async function getUpstreamDnsResolutionSettings(): Promise<UpstreamDnsResolutionSettings | null> {

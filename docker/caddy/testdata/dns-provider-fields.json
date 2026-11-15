@@ -1,0 +1,98 @@
+{
+  "cloudflare": [
+    "api_token"
+  ],
+  "route53": [
+    "access_key_id",
+    "secret_access_key",
+    "region",
+    "hosted_zone_id"
+  ],
+  "digitalocean": [
+    "auth_token"
+  ],
+  "duckdns": [
+    "api_token"
+  ],
+  "hetzner": [
+    "api_token"
+  ],
+  "inwx": [
+    "username",
+    "password",
+    "shared_secret",
+    "endpoint_url"
+  ],
+  "vultr": [
+    "api_token"
+  ],
+  "porkbun": [
+    "api_key",
+    "api_secret_key"
+  ],
+  "powerdns": [
+    "server_url",
+    "api_token",
+    "server_id"
+  ],
+  "godaddy": [
+    "api_token"
+  ],
+  "namecheap": [
+    "api_key",
+    "user"
+  ],
+  "ovh": [
+    "endpoint",
+    "application_key",
+    "application_secret",
+    "consumer_key"
+  ],
+  "ionos": [
+    "auth_api_token"
+  ],
+  "linode": [
+    "api_token"
+  ],
+  "njalla": [
+    "api_token"
+  ],
+  "spaceship": [
+    "api_key",
+    "api_secret"
+  ],
+  "desec": [
+    "token"
+  ],
+  "bunny": [
+    "access_key"
+  ],
+  "dynu": [
+    "api_token"
+  ],
+  "acmedns": [
+    "username",
+    "password",
+    "subdomain",
+    "server_url"
+  ],
+  "infomaniak": [
+    "api_token"
+  ],
+  "netcup": [
+    "customer_number",
+    "api_key",
+    "api_password"
+  ],
+  "cloudns": [
+    "auth_id",
+    "sub_auth_id",
+    "auth_password"
+  ],
+  "rfc2136": [
+    "key_name",
+    "key_alg",
+    "key",
+    "server"
+  ]
+}

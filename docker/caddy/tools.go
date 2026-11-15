@@ -23,7 +23,7 @@ import (
 	_ "github.com/caddy-dns/duckdns"
 	_ "github.com/caddy-dns/dynu"
 	_ "github.com/caddy-dns/godaddy"
-	_ "github.com/caddy-dns/hetzner"
+	_ "github.com/caddy-dns/hetzner/v2"
 	_ "github.com/caddy-dns/infomaniak"
 	_ "github.com/caddy-dns/inwx"
 	_ "github.com/caddy-dns/ionos"

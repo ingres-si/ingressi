@@ -21,7 +21,7 @@ github.com/caddy-dns/cloudflare
 github.com/caddy-dns/route53
 github.com/caddy-dns/digitalocean
 github.com/caddy-dns/duckdns
-github.com/caddy-dns/hetzner
+github.com/caddy-dns/hetzner/v2
 github.com/caddy-dns/vultr
 github.com/caddy-dns/porkbun
 github.com/caddy-dns/powerdns

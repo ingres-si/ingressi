@@ -48,3 +48,24 @@ jobs:
         # Node): under Node, next.config.mjs falls back to better-sqlite3,
         # which the middleware bundle cannot load.
         run: bun --bun run build
+
+  caddy-modules:
+    runs-on: ubuntu-latest
+    permissions: {}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: docker/caddy/go.mod
+          cache-dependency-path: docker/caddy/go.sum
+
+      # Decodes every DNS provider's credential keys into the bundled Caddy
+      # module, so a module update that renames a field fails here instead
+      # of at config load.
+      - name: Check DNS provider fields against the Caddy modules
+        working-directory: docker/caddy
+        run: go test ./...

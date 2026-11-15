@@ -163,6 +163,17 @@ describe("REST settings runtime validation", () => {
     })).toThrow(/unknown field/);
   });
 
+  it("accepts the DigitalOcean token under its pre-fix api_token key", () => {
+    expect(() => validateSettingsGroup("dns-provider", {
+      providers: { digitalocean: { api_token: "secret" } },
+      default: "digitalocean",
+    })).not.toThrow();
+    expect(() => validateSettingsGroup("dns-provider", {
+      providers: { digitalocean: { auth_token: "secret" } },
+      default: "digitalocean",
+    })).not.toThrow();
+  });
+
   it("validates DNS challenge duration option fields", () => {
     const settings = (propagation: Record<string, unknown>) => ({
       providers: {

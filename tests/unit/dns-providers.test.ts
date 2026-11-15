@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   DNS_PROVIDERS,
@@ -7,6 +9,7 @@ import {
   encryptProviderCredentials,
   getProviderDefinition,
   isValidDnsDuration,
+  normalizeProviderCredentials,
   redactDnsProviderSettingsForApi,
   redactLegacyCloudflareSettingsForApi,
 } from "@/src/lib/dns-providers";
@@ -614,5 +617,55 @@ describe("DNS provider registry", () => {
     expect(isValidDnsDuration("600")).toBe(false);
     expect(isValidDnsDuration("900 sec")).toBe(false);
     expect(isValidDnsDuration("soon")).toBe(false);
+  });
+  it("keeps the Caddy module field fixture in sync with the registry", () => {
+    // docker/caddy/dns_providers_test.go decodes these keys into the bundled
+    // Caddy modules; regenerate the fixture when a provider field changes.
+    const fixture = JSON.parse(
+      readFileSync(join(process.cwd(), "docker/caddy/testdata/dns-provider-fields.json"), "utf8")
+    );
+    const challengeKeys = challengeOptionFields().map((field) => field.key);
+    const registry = Object.fromEntries(
+      DNS_PROVIDERS.map((provider) => [
+        provider.name,
+        provider.fields.map((field) => field.key).filter((key) => !challengeKeys.includes(key)),
+      ])
+    );
+    expect(fixture).toEqual(registry);
+  });
+
+  it("sends the DigitalOcean token as auth_token", () => {
+    const encrypted = encryptProviderCredentials("digitalocean", { auth_token: "do-token" });
+
+    expect(isEncryptedSecret(encrypted.auth_token)).toBe(true);
+    expect(buildDnsChallengeConfig("digitalocean", encrypted, [])).toEqual({
+      provider: { name: "digitalocean", auth_token: "do-token" },
+    });
+  });
+
+  it("renames a DigitalOcean token stored as api_token by older releases", () => {
+    const stored = encryptProviderCredentials("digitalocean", { auth_token: "do-token" });
+    const legacy = { api_token: stored.auth_token, propagation_delay: "60s" };
+
+    expect(normalizeProviderCredentials("digitalocean", legacy)).toEqual({
+      auth_token: stored.auth_token,
+      propagation_delay: "60s",
+    });
+    expect(normalizeProviderCredentials("digitalocean", { api_token: "old", auth_token: "new" })).toEqual({
+      auth_token: "new",
+    });
+    expect(buildDnsChallengeConfig("digitalocean", legacy, [])).toEqual({
+      provider: { name: "digitalocean", auth_token: "do-token" },
+      propagation_delay: "60s",
+    });
+  });
+
+  it("sends the Hetzner Cloud API token as api_token for the v2 module", () => {
+    expect(getProviderDefinition("hetzner")?.modulePath).toBe("github.com/caddy-dns/hetzner/v2");
+    const encrypted = encryptProviderCredentials("hetzner", { api_token: "hcloud-token" });
+
+    expect(buildDnsChallengeConfig("hetzner", encrypted, [])).toEqual({
+      provider: { name: "hetzner", api_token: "hcloud-token" },
+    });
   });
 });
