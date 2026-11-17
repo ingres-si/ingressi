@@ -69,7 +69,7 @@ export function getClient(): ClickHouseClient {
 
 const TRAFFIC_EVENTS_DDL = `
 CREATE TABLE IF NOT EXISTS traffic_events (
-    ts           DateTime          CODEC(Delta, ZSTD),
+    ts           DateTime('UTC')   CODEC(Delta, ZSTD),
     client_ip    String            CODEC(ZSTD(3)),
     country_code LowCardinality(Nullable(String)),
     host         LowCardinality(String) DEFAULT '' CODEC(ZSTD(3)),
@@ -103,7 +103,7 @@ const WAF_TX_ID_DEFAULT = `JSONExtractString(ifNull(raw_data, ''), 'transaction'
 
 const WAF_EVENTS_DDL = `
 CREATE TABLE IF NOT EXISTS waf_events (
-    ts           DateTime          CODEC(Delta, ZSTD),
+    ts           DateTime('UTC')   CODEC(Delta, ZSTD),
     host         LowCardinality(String) DEFAULT '' CODEC(ZSTD(3)),
     client_ip    String            CODEC(ZSTD(3)),
     country_code LowCardinality(Nullable(String)),
@@ -123,8 +123,12 @@ SETTINGS index_granularity = 8192
 `;
 
 // Migrations applied to existing tables on startup (idempotent MODIFY COLUMN).
+// Do not change an existing ts column's timezone here. toYYYYMM(ts) is its
+// partition key: an in-place UTC cast leaves old local-month partition IDs
+// behind and range pruning can hide boundary rows. Numeric epoch inserts are
+// safe for legacy DateTime columns too; retain their existing interpretation.
+// New tables explicitly use UTC, and migrations must not erase that metadata.
 const TRAFFIC_EVENTS_MIGRATIONS = [
-  `ALTER TABLE traffic_events MODIFY COLUMN ts DateTime CODEC(Delta, ZSTD)`,
   `ALTER TABLE traffic_events MODIFY COLUMN client_ip String CODEC(ZSTD(3))`,
   `ALTER TABLE traffic_events MODIFY COLUMN country_code LowCardinality(Nullable(String))`,
   `ALTER TABLE traffic_events MODIFY COLUMN host LowCardinality(String) DEFAULT '' CODEC(ZSTD(3))`,
@@ -147,7 +151,6 @@ const TRAFFIC_EVENTS_MIGRATIONS = [
 ];
 
 const WAF_EVENTS_MIGRATIONS = [
-  `ALTER TABLE waf_events MODIFY COLUMN ts DateTime CODEC(Delta, ZSTD)`,
   `ALTER TABLE waf_events MODIFY COLUMN host LowCardinality(String) DEFAULT '' CODEC(ZSTD(3))`,
   `ALTER TABLE waf_events MODIFY COLUMN client_ip String CODEC(ZSTD(3))`,
   `ALTER TABLE waf_events MODIFY COLUMN country_code LowCardinality(Nullable(String))`,
@@ -333,13 +336,19 @@ export interface WafEventRow {
   tx_id?: string;
 }
 
+/** DateTime stores UInt32 epoch seconds. Reject invalid input instead of wrapping it. */
+function eventEpoch(ts: number): number {
+  if (!Number.isFinite(ts) || ts < 0 || ts >= 0x1_0000_0000) throw new RangeError('Event timestamp is outside the ClickHouse DateTime epoch range');
+  return Math.floor(ts);
+}
+
 export async function insertTrafficEvents(rows: TrafficEventRow[]): Promise<void> {
   if (!analyticsConfigured || rows.length === 0) return;
   const ch = getClient();
-  // Convert unix timestamp to ClickHouse DateTime string
+  // Numeric Unix seconds are unambiguous even before an existing table is migrated.
   const values = rows.map(r => ({
     ...r,
-    ts: new Date(r.ts * 1000).toISOString().replace('T', ' ').slice(0, 19),
+    ts: eventEpoch(r.ts),
     is_blocked: r.is_blocked ? 1 : 0,
     is_rate_limited: r.is_rate_limited ? 1 : 0,
   }));
@@ -351,7 +360,7 @@ export async function insertWafEvents(rows: WafEventRow[]): Promise<void> {
   const ch = getClient();
   const values = rows.map(r => ({
     ...r,
-    ts: new Date(r.ts * 1000).toISOString().replace('T', ' ').slice(0, 19),
+    ts: eventEpoch(r.ts),
     blocked: r.blocked ? 1 : 0,
   }));
   await ch.insert({ table: 'waf_events', values, format: 'JSONEachRow' });

@@ -182,3 +182,19 @@ curl -G https://dash.example.com/api/v1/analytics/query \
   --data-urlencode 'metric=errors' \
   --data-urlencode 'filters=[{"dim":"host","op":"is","value":"app.example.com"},{"dim":"status","op":"is","value":"5xx"}]'
 ```
+
+
+### Timestamp contract and existing partitions
+
+Analytics ingestion writes numeric Unix epoch seconds, never offset-free UTC
+text. Fresh tables declare `DateTime('UTC')`. Existing tables retain their
+original timestamp column timezone: changing it in place can invalidate the
+meaning of their `toYYYYMM(ts)` partition IDs and hide boundary rows during
+range pruning. Startup migrations neither cast these columns nor reset UTC
+columns to the server timezone. Numeric inserts work with both schemas.
+
+This corrects new ingestion without shifting stored historical epochs. Previously
+misparsed timestamps require independent raw-event evidence and a verified backup
+before any separate repair. Do not apply a blanket offset. Converting legacy
+partitions to a different timezone requires a separately planned repartitioning
+migration with writers coordinated; it is not a metadata-only ALTER.
