@@ -27,7 +27,6 @@ import {
   consumeWafViolation,
   createWafCorrelation,
   pruneWafCorrelation,
-  WAF_MATCH_WINDOW_SEC,
 } from '@/src/lib/analytics/waf-correlation';
 
 const TS = 1_791_000_000;
@@ -168,42 +167,85 @@ describe('address rules', () => {
 });
 
 describe('WAF correlation', () => {
-  it('marks the interrupted request with its rule and consumes the violation once', () => {
+  const access = (status: number, id: unknown, extra: Record<string, unknown> = {}, request: Record<string, unknown> = {}) =>
+    handled({ status, waf_transaction_id: id, ...extra }, request);
+
+  it('marks the exact interrupted transaction and consumes it once', () => {
     const waf = collectWafLogLines([ruleMatch(TS, 949110), ruleMatch(TS, 920450), violation(TS + 0.2)]);
-    const first = parseLine(handled({ status: 403 }), new Set(), { waf })!;
-    expect(first).toMatchObject({ outcome: 'waf', waf_rule_id: 920450 });
-    const again = parseLine(handled({ status: 403 }), new Set(), { waf })!;
-    expect(again).toMatchObject({ outcome: 'served', waf_rule_id: 0 });
+    expect(parseLine(access(403, 'tx1'), new Set(), { waf })).toMatchObject({ outcome: 'waf', waf_rule_id: 920450 });
+    expect(parseLine(access(403, 'tx1'), new Set(), { waf })).toMatchObject({ outcome: 'served', waf_rule_id: 0 });
   });
 
-  it('needs the same client, Host and URI within the window', () => {
-    const waf = collectWafLogLines([violation(TS, 'a', { client_ip: '198.51.100.1' }), violation(TS, 'b', { hostname: 'other.example.com' }), violation(TS - WAF_MATCH_WINDOW_SEC - 5, 'c')]);
-    expect(parseLine(handled({ status: 403 }), new Set(), { waf })!.outcome).toBe('served');
-    // A violation logged after the access log line belongs to another request.
-    const later = collectWafLogLines([violation(TS + 10, 'd')]);
-    expect(consumeWafViolation(later, { clientIp: '203.0.113.9', host: 'app.example.com', uri: '/admin?token=x', ts: TS })).toBeNull();
+  it('does not steal an interruption in a same-second burst (issue 397)', () => {
+    const waf = collectWafLogLines([ruleMatch(TS + 0.2, 941100, 'blocked'), violation(TS + 0.2, 'blocked')]);
+    const rows = [access(200, 'before'), access(403, 'blocked'), access(200, 'after')]
+      .map(line => parseLine(line, new Set(), { waf })!);
+    expect(rows.map(row => [row.status, row.outcome, row.waf_rule_id])).toEqual([
+      [200, 'served', 0], [403, 'waf', 941100], [200, 'served', 0],
+    ]);
   });
 
-  it('carries unmatched violations over and prunes old ones', () => {
+  it('separates concurrent upstream 403s and different methods with the same path', () => {
+    const waf = collectWafLogLines([violation(TS, 'post-blocked')]);
+    expect(parseLine(access(403, 'get-upstream'), new Set(), { waf })).toMatchObject({ outcome: 'served' });
+    expect(parseLine(access(403, 'post-blocked', {}, { method: 'POST' }), new Set(), { waf })).toMatchObject({ outcome: 'waf' });
+  });
+
+  it('uses transaction identity even when the violation has no hostname or delayed access logging', () => {
+    const waf = collectWafLogLines([violation(TS, 'tx1', { hostname: '', uri: '/different-log-representation' })]);
+    expect(parseLine(access(403, 'tx1', { ts: TS + 90 }), new Set(), { waf })).toMatchObject({ outcome: 'waf' });
+  });
+
+  it('does not infer an interruption from a detection-only rule match or HTTP status', () => {
+    const waf = collectWafLogLines([ruleMatch(TS, 941100, 'detection-only')]);
+    expect(parseLine(access(200, 'detection-only'), new Set(), { waf })).toMatchObject({ outcome: 'served', waf_rule_id: 0 });
+    expect(parseLine(access(403, 'detection-only'), new Set(), { waf })).toMatchObject({ outcome: 'served', waf_rule_id: 0 });
+  });
+
+  it.each([403, 413, 406, 200])('attributes an actual interruption with status %s, even without a rule ID', status => {
+    const waf = collectWafLogLines([violation(TS)]);
+    expect(parseLine(access(status, 'tx1'), new Set(), { waf })).toMatchObject({ outcome: 'waf', waf_rule_id: 0 });
+  });
+
+  it.each([undefined, null, '', 123, ['tx1'], { id: 'tx1' }, 'x'.repeat(129)])('ignores missing or malformed access IDs: %j', id => {
+    const waf = collectWafLogLines([violation(TS)]);
+    expect(parseLine(access(403, id), new Set(), { waf })).toMatchObject({ outcome: 'served' });
+    expect(waf.violations.size).toBe(1);
+  });
+
+  it('does not trust a client-supplied transaction header or legacy tuple matching', () => {
+    const waf = collectWafLogLines([violation(TS)]);
+    expect(parseLine(handled({ status: 403 }, { headers: { 'Waf-Transaction-Id': ['tx1'] } }), new Set(), { waf })).toMatchObject({ outcome: 'served' });
+    expect(waf.violations.size).toBe(1);
+  });
+
+  it('carries unmatched IDs across passes and prunes stale state', () => {
     const waf = createWafCorrelation();
     collectWafLogLines([violation(TS), ruleMatch(TS, 930130)], waf);
     pruneWafCorrelation(waf, TS + 60);
-    expect(consumeWafViolation(waf, { clientIp: '203.0.113.9', host: 'app.example.com', uri: '/admin?token=x', ts: TS + 1 })).toEqual({ ruleId: 930130 });
-    collectWafLogLines([violation(TS)], waf);
+    expect(consumeWafViolation(waf, 'tx1')).toEqual({ ruleId: 930130 });
+    collectWafLogLines([violation(TS), ruleMatch(TS, 930130)], waf);
     pruneWafCorrelation(waf, TS + 1000);
     expect(waf.violations.size).toBe(0);
     expect(waf.rules.size).toBe(0);
   });
 
-  it('ignores lines it does not understand', () => {
-    const waf = collectWafLogLines(['not json', JSON.stringify({ msg: 42 }), JSON.stringify({ msg: 'WAF rule violation detected' }), '']);
+  it('consumes duplicate violation records only once', () => {
+    const waf = collectWafLogLines([violation(TS), violation(TS)]);
+    expect(consumeWafViolation(waf, 'tx1')).toEqual({ ruleId: 0 });
+    expect(consumeWafViolation(waf, 'tx1')).toBeNull();
+  });
+
+  it('ignores malformed interruption records', () => {
+    const waf = collectWafLogLines(['not json', JSON.stringify({ msg: 42 }), JSON.stringify({ msg: 'WAF rule violation detected' }), violation(TS, ''), '']);
     expect(waf.violations.size).toBe(0);
   });
 
-  it('never matches requests the blocker or the limiter refused', () => {
+  it('never consumes an ID when the blocker or limiter refused the request first', () => {
     const waf = collectWafLogLines([violation(TS)]);
-    const lines = [blockerLine(TS), handled({ status: 403 })];
-    expect(parseLine(lines[1], collectBlockedSignatures(lines), { waf })!.outcome).toBe('geo');
+    const lines = [blockerLine(TS), access(403, 'tx1')];
+    expect(parseLine(lines[1], collectBlockedSignatures(lines), { waf })).toMatchObject({ outcome: 'geo' });
+    expect(parseLine(access(429, 'tx1', { rate_limit_zone: 'test' }), new Set(), { waf })).toMatchObject({ outcome: 'rate_limit' });
     expect(waf.violations.size).toBe(1);
   });
 });
