@@ -72,7 +72,7 @@ const RULES = '/logs/waf-rules.log';
 const TS = Math.floor(Date.now() / 1000) - 10;
 
 const handled = (uri: string, status: number, ts = TS) =>
-  JSON.stringify({ ts: ts + 0.5, msg: 'handled request', status, size: 1, duration: 0.01, request: { client_ip: '203.0.113.9', host: 'app.example.com', method: 'GET', uri, proto: 'HTTP/1.1', headers: {} } });
+  JSON.stringify({ ts: ts + 0.5, msg: 'handled request', waf_transaction_id: `tx-${uri}`, status, size: 1, duration: 0.01, request: { client_ip: '203.0.113.9', host: 'app.example.com', method: 'GET', uri, proto: 'HTTP/1.1', headers: {} } });
 const violation = (uri: string, ts = TS) =>
   JSON.stringify({ level: 'error', ts: ts + 0.2, logger: 'http.handlers.waf', msg: 'WAF rule violation detected', hostname: 'app.example.com', uri, client_ip: '203.0.113.9', unique_id: `tx-${uri}` });
 const rule = (uri: string, id: number, ts = TS) =>

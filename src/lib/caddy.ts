@@ -96,6 +96,7 @@ import { buildClientAuthentication, groupMtlsDomainsByCaSet, buildMtlsRbacSubrou
 import { buildRoleFingerprintMap, buildCertFingerprintMap, buildRoleCertIdMap } from "./models/mtls-roles";
 import { getAccessRulesForHosts } from "./models/mtls-access-rules";
 import { buildWafHandlerEntry, resolveEffectiveWaf, wafDirectiveSource, wafExclusionsForHost } from "./caddy-waf";
+import { WAF_TRANSACTION_LOG_FIELD } from "./waf-log-fields";
 import { listWafExclusionRows, type WafExclusionRow } from "./models/waf-exclusions";
 import {
   buildHostRateLimit,
@@ -1420,6 +1421,10 @@ async function buildProxyRoutes(
     );
     if (effectiveWaf?.enabled && effectiveWaf.mode !== 'Off') {
       handlers.unshift(
+        // Evaluate on the way out, including errors: Coraza sets this trusted
+        // placeholder when it creates the transaction. Do not take an ID from
+        // a client header or evaluate it before the WAF has run.
+        { handler: 'log_append', key: WAF_TRANSACTION_LOG_FIELD, value: '{http.transaction_id}' },
         buildWafHandlerEntry(
           effectiveWaf,
           Boolean(row.allowWebsocket),

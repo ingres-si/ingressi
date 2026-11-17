@@ -9,6 +9,7 @@ import { config } from './config';
 import { initGeoIp, lookupIp } from './analytics/geoip';
 import { deriveOutcome } from './analytics/outcome';
 import { userAgentFamily } from './analytics/user-agent';
+import { WAF_TRANSACTION_LOG_FIELD } from './waf-log-fields';
 import { getAddressRuleList, inAddressRules } from './analytics/address-rules';
 import {
   collectWafLogLines,
@@ -52,6 +53,8 @@ interface CaddyLogEntry {
   uri?: string;
   // fields on "handled request" entries
   status?: number;
+  // Coraza's server-generated ID, evaluated by log_append after the WAF returns.
+  [WAF_TRANSACTION_LOG_FIELD]?: unknown;
   size?: number;
   // seconds as a float (Caddy's default duration encoding), or a Go duration string
   duration?: unknown;
@@ -204,7 +207,7 @@ export function parseLine(line: string, blocked: BlockedSignatures, context: Par
   // Only Caddy's own limiter names a zone; an upstream's 429 carries none.
   const isRateLimited = status === 429 && typeof entry.rate_limit_zone === 'string' && entry.rate_limit_zone.length > 0;
   // A blocked request never reached the WAF, so only look for a violation otherwise.
-  const waf = isBlocked || isRateLimited ? null : consumeWafViolation(context.waf, { clientIp, host, uri, ts });
+  const waf = isBlocked || isRateLimited ? null : consumeWafViolation(context.waf, entry[WAF_TRANSACTION_LOG_FIELD]);
   const outcome = deriveOutcome({
     status,
     rateLimitZone: entry.rate_limit_zone,

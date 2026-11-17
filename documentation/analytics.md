@@ -83,13 +83,13 @@ Each request has one outcome. Every outcome but **served** counts as **mitigated
 | `rate_limit` | The rate limiter refused it | Status 429 and the access log line names the rate limit zone. A 429 from the upstream is served. |
 | `geo` | A country, continent or AS number rule blocked it | caddy-blocker logged "request blocked" for the same client, method and URI. Also fail-closed blocking of an unknown client address. |
 | `access` | An address rule or basic authentication refused it | A caddy-blocker block whose client address is listed in a `block_ips` or `block_cidrs` rule (global or of any host), or a 401 with Caddy's basic-auth challenge (`Basic realm="restricted"`). |
-| `waf` | The WAF blocked it | Coraza logged "WAF rule violation detected" for the same client, Host and URI (in `waf-rules.log`). Matches in detection-only mode are served. |
+| `waf` | The WAF blocked it | Coraza logged "WAF rule violation detected" with the same server-generated transaction ID as the access log's `waf_transaction_id`. Matches in detection-only mode are served. |
 | `auth` | Forward auth sent it to sign in, or refused the signed-in user | A redirect to the dashboard's sign-in portal (`BASE_URL/portal?rd=…`), to Authentik's outpost, to oauth2-proxy's `/oauth2/start` or `/oauth2/sign_in`, or to any URL whose `rd` parameter points back to the requested host. |
 | `served` | Everything else, whatever the status | |
 
 The rules apply in this order, and the first that matches wins. When the WAF blocks a request while inspecting the response, Coraza logs no violation and the request counts as served; the WAF event is still recorded and shown under Security events.
 
-The web container needs read access to `waf-rules.log` for WAF outcomes, as it already has for WAF events.
+The web container needs read access to `waf-rules.log` for WAF outcomes, as it already has for WAF events. The generated Caddy configuration appends Coraza's `{http.transaction_id}` after the WAF returns, including on interruption. The ID is not taken from a client header. Requests in legacy access logs without that ID are not matched by client, host, path or time: those values are ambiguous under concurrency. Previously stored outcomes are not rewritten by this change.
 
 ## The Analytics page
 
