@@ -106,6 +106,8 @@ export type DigestFacts = {
   traffic: TrafficFacts | null;
   certificates: {
     withinDays: number;
+    /** Availability/validation findings have no inferred expiry countdown. */
+    attention?: { kind: string; name: string; state: string; message: string }[];
     expiring: { kind: string; name: string; expiresAt: string; daysLeft: number; expired: boolean }[];
   };
   configChanges: { total: number; recent: { at: string; actor: string; summary: string }[] };
@@ -369,18 +371,28 @@ async function collectNewSources(
 
 async function collectCertificates(now: Date): Promise<DigestFacts["certificates"]> {
   const evaluation = await evaluateCertExpiring({ days: DIGEST_CERT_DAYS, includeClientCertificates: true, includeManagedCertificates: true }, now);
-  const expiring = evaluation.status === "ok"
-    ? evaluation.findings
-        .map((finding) => ({
-          kind: String(finding.facts.certificateKind ?? "Certificate"),
-          name: str(String(finding.facts.name ?? finding.facts.domain ?? ""), 120),
-          expiresAt: String(finding.facts.expiresAt ?? ""),
-          daysLeft: num(finding.facts.daysLeft),
-          expired: finding.facts.expired === true,
-        }))
-        .sort((a, b) => a.expiresAt.localeCompare(b.expiresAt))
-    : [];
-  return { withinDays: DIGEST_CERT_DAYS, expiring };
+  const expiring: DigestFacts["certificates"]["expiring"] = [];
+  const attention: NonNullable<DigestFacts["certificates"]["attention"]> = [];
+  if (evaluation.status !== "ok") {
+    attention.push({ kind: "Certificate status", name: "", state: "unknown", message: "Certificate status could not be checked." });
+  } else for (const finding of evaluation.findings) {
+    const kind = String(finding.facts.certificateKind ?? "Certificate");
+    const name = str(String(finding.facts.name ?? finding.facts.domain ?? ""), 120);
+    const raw = finding.facts.expiresAt;
+    const expiry = typeof raw === "string" && raw.trim() ? Date.parse(raw) : NaN;
+    const state = String(finding.facts.state ?? "unknown");
+    if (!Number.isFinite(expiry) || ["missing", "pending", "unknown", "mismatch"].includes(state) && finding.facts.state != null) {
+      attention.push({ kind, name, state, message: str(finding.message, 1000) });
+      continue;
+    }
+    // The actual date is authoritative, including managed certificates whose
+    // findings do not carry an `expired` flag. Null never becomes zero days.
+    const daysLeft = Math.floor((expiry - now.getTime()) / (24 * HOUR_MS));
+    if (expiry > now.getTime() + DIGEST_CERT_DAYS * 24 * HOUR_MS) continue;
+    expiring.push({ kind, name, expiresAt: new Date(expiry).toISOString(), daysLeft, expired: expiry <= now.getTime() });
+  }
+  expiring.sort((a, b) => a.expiresAt.localeCompare(b.expiresAt));
+  return { withinDays: DIGEST_CERT_DAYS, expiring, attention };
 }
 
 async function collectConfigChanges(from: Date, to: Date): Promise<DigestFacts["configChanges"]> {

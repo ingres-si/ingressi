@@ -152,3 +152,14 @@ describe('digest formats per channel', () => {
     expect(truncateUtf8('short', 200)).toBe('short');
   });
 });
+
+
+describe('certificate availability rendering (issue 399)', () => {
+  it('renders availability separately without inventing a zero-day expiry', () => {
+    const text = renderDigestText(content({ facts: facts({ certificates: { withinDays: 14, expiring: [], attention: [{ kind: 'Managed certificate', name: 'missing.example', state: 'missing', message: 'No certificate available.' }] } }) }));
+    expect(text).toContain('Certificate availability and validation');
+    expect(text).toContain('missing.example": missing. No certificate available.');
+    expect(text).not.toContain('expires in 0 days');
+    expect(text).not.toMatch(/1970|Invalid Date/);
+  });
+});
