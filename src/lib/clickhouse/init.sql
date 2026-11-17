@@ -7,7 +7,7 @@
 -- tables are migrated to the configured value on startup.
 
 CREATE TABLE IF NOT EXISTS traffic_events (
-    ts           DateTime          CODEC(Delta, ZSTD),
+    ts           DateTime('UTC')   CODEC(Delta, ZSTD),
     client_ip    String            CODEC(ZSTD(3)),
     country_code LowCardinality(Nullable(String)),
     host         LowCardinality(String) DEFAULT '' CODEC(ZSTD(3)),
@@ -32,7 +32,7 @@ TTL ts + INTERVAL 30 DAY DELETE
 SETTINGS index_granularity = 8192;
 
 CREATE TABLE IF NOT EXISTS waf_events (
-    ts           DateTime          CODEC(Delta, ZSTD),
+    ts           DateTime('UTC')   CODEC(Delta, ZSTD),
     host         LowCardinality(String) DEFAULT '' CODEC(ZSTD(3)),
     client_ip    String            CODEC(ZSTD(3)),
     country_code LowCardinality(Nullable(String)),

@@ -261,3 +261,29 @@ describe('clickhouse client analytics enablement', () => {
     expect(call.query_params).toEqual({ p_tx: "x' OR 1=1 --" });
   });
 });
+
+
+describe('ClickHouse UTC timestamp contract (issue 400)', () => {
+  afterEach(() => { vi.resetModules(); vi.unstubAllEnvs(); vi.doUnmock('@clickhouse/client'); });
+  it('uses explicit UTC for fresh tables and existing-table migrations, with numeric epochs for both inserts', async () => {
+    vi.stubEnv('CLICKHOUSE_PASSWORD', 'isolated-test');
+    const command = vi.fn(); const insert = vi.fn();
+    vi.doMock('@clickhouse/client', () => ({ createClient: () => ({ command, insert, query: async () => ({ json: async () => [] }) }) }));
+    const client = await import('@/src/lib/clickhouse/client');
+    await client.initClickHouse();
+    const commands = command.mock.calls.map(([x]) => x.query as string);
+    for (const table of ['traffic_events', 'waf_events']) {
+      expect(commands.find((q) => q.includes('CREATE TABLE IF NOT EXISTS ' + table))).toContain("DateTime('UTC')");
+      expect(commands.some((q) => q.startsWith(`ALTER TABLE ${table} MODIFY COLUMN ts `))).toBe(false);
+    }
+    for (const epoch of [0, 1793511000.9, 1793514600, 4294967295]) {
+      await client.insertTrafficEvents([{ ts: epoch, is_blocked: false, is_rate_limited: false } as never]);
+      await client.insertWafEvents([{ ts: epoch, blocked: true } as never]);
+    }
+    expect(insert.mock.calls.map(([x]) => x.values[0].ts)).toEqual([0, 0, 1793511000, 1793511000, 1793514600, 1793514600, 4294967295, 4294967295]);
+    for (const ts of [NaN, Infinity, -1, 4294967296]) {
+      await expect(client.insertTrafficEvents([{ ts } as never])).rejects.toThrow(RangeError);
+      await expect(client.insertWafEvents([{ ts } as never])).rejects.toThrow(RangeError);
+    }
+  });
+});
