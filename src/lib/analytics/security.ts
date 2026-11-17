@@ -65,7 +65,7 @@ export type SecurityPeak = {
   ts: number;
   value: number;
   bySource: Partial<Record<Outcome, number>>;
-  /** WAF events (detection-only included) and other mitigated requests of the bucket; null when the bucket had none. */
+  /** Attribution over the same mitigated traffic requests as value; detection-only matches are excluded. */
   top: SecurityPeakTop | null;
 };
 
@@ -140,34 +140,38 @@ export async function querySecuritySeries(input: { range: ResolvedRange }, now =
   });
 }
 
-/** The busiest source, host and WAF rule between p_from and p_to. */
+/** The same stopped-request population as the peak headline, counted once per access event. */
 async function queryPeakTop(params: QueryParams): Promise<SecurityPeakTop | null> {
+  const stopped = `traffic_events WHERE ${timeWhere()} AND ${MITIGATED_SQL}`;
   const [addresses, sources, hosts, rules] = await Promise.all([
-    selectRows<{ n: unknown }>(`SELECT uniq(client_ip) AS n FROM (${SOURCES_UNION})`, params),
+    selectRows<{ n: unknown }>(`SELECT uniq(client_ip) AS n FROM ${stopped}`, params),
     selectRows<{ client_ip: unknown; country: unknown; n: unknown }>(
-      `SELECT client_ip, any(c) AS country, count() AS n FROM (${SOURCES_UNION}) GROUP BY client_ip ORDER BY n DESC, client_ip LIMIT 1`,
-      params
+      `SELECT client_ip, any(${COUNTRY_SQL}) AS country, count() AS n FROM ${stopped} GROUP BY client_ip ORDER BY n DESC, client_ip LIMIT 1`, params
     ),
     selectRows<{ name: unknown; n: unknown }>(
-      `SELECT ${HOST_NAME_SQL} AS name, count() AS n FROM (${SOURCES_UNION}) GROUP BY name ORDER BY n DESC, name LIMIT 1`,
-      params
+      `SELECT ${HOST_NAME_SQL} AS name, count() AS n FROM ${stopped} GROUP BY name ORDER BY n DESC, name LIMIT 1`, params
     ),
-    selectRows<{ rule_id: unknown; message: unknown; n: unknown }>(
-      `SELECT rule_id, any(rule_message) AS message, count() AS n FROM waf_events
-       WHERE ${timeWhere()} AND rule_id IS NOT NULL
-       GROUP BY rule_id ORDER BY n DESC, rule_id LIMIT 1`,
-      params
+    selectRows<{ rule_id: unknown; n: unknown }>(
+      `SELECT waf_rule_id AS rule_id, count() AS n FROM ${stopped}
+       AND (${OUTCOME_SQL}) = 'waf' AND waf_rule_id > 0
+       GROUP BY rule_id ORDER BY n DESC, rule_id LIMIT 1`, params
     ),
   ]);
   const source = sources[0];
   const host = hosts[0];
   const rule = rules[0];
   if (!source && !host && !rule) return null;
+  // Audit events can include multiple rule matches per request. They provide
+  // descriptive text only; never use their counts as stopped-request counts.
+  const messages = rule ? await selectRows<{ message: unknown }>(
+    `SELECT any(rule_message) AS message FROM waf_events WHERE ${timeWhere()}
+     AND blocked AND rule_id = {p_peak_rule:Int32}`, { ...params, p_peak_rule: num(rule.rule_id) }
+  ) : [];
   return {
     addresses: num(addresses[0]?.n),
     source: source ? { ip: String(source.client_ip ?? ''), country: String(source.country ?? '') || 'XX', count: num(source.n) } : null,
     host: host ? { name: String(host.name ?? ''), count: num(host.n) } : null,
-    rule: rule ? { ruleId: num(rule.rule_id), message: rule.message == null ? null : String(rule.message), count: num(rule.n) } : null,
+    rule: rule ? { ruleId: num(rule.rule_id), message: messages[0]?.message == null ? null : String(messages[0].message), count: num(rule.n) } : null,
   };
 }
 
