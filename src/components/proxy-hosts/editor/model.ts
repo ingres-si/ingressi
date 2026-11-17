@@ -191,6 +191,7 @@ export type MtlsForm = {
 
 export type PathBlockRow = { key: string; path: string; status: PathBlockStatusCode; body: string };
 export type PathAllowRow = { key: string; path: string };
+export type PathAccessListRow = { key: string; path: string; accessListId: number | null };
 export type RedirectRow = { key: string; from: string; to: string; status: RedirectStatus };
 export type PathRewriteRow = { key: string; from: string; to: string };
 export type ErrorPageRow = { key: string; statuses: string; body: string; contentType: string };
@@ -222,6 +223,7 @@ export type HostForm = {
   mtls: MtlsForm;
   pathBlocks: PathBlockRow[];
   pathAllows: PathAllowRow[];
+  pathAccessLists: PathAccessListRow[];
   certificateId: number | null;
   sslForced: boolean;
   hstsEnabled: boolean;
@@ -649,6 +651,7 @@ export function hostToForm(host: ProxyHost, context: FormContext = {}): HostForm
     },
     pathBlocks: host.pathBlocks.map((rule) => ({ key: rowKey("pb"), path: rule.path, status: rule.status, body: rule.body ?? "" })),
     pathAllows: host.pathAllows.map((rule) => ({ key: rowKey("pa"), path: rule.path })),
+    pathAccessLists: (host.pathAccessLists ?? []).map((rule) => ({ key: rowKey("pl"), path: rule.path, accessListId: rule.accessListId })),
     certificateId: host.certificateId,
     sslForced: host.sslForced,
     hstsEnabled: host.hstsEnabled,
@@ -706,6 +709,7 @@ export function newHostForm(
     mtls: { enabled: false, certIds: [], roleIds: [], protectedPaths: "", excludedPaths: "", trustMode: "identity", caIds: [] },
     pathBlocks: [],
     pathAllows: [],
+    pathAccessLists: [],
     certificateId: null,
     sslForced: true,
     hstsEnabled: true,
@@ -935,6 +939,9 @@ export function formToInput(form: HostForm, saved: HostForm, base: ProxyHost | n
     mtls: mtlsInput(form, base),
     pathBlocks,
     pathAllows: form.pathAllows.filter((rule) => rule.path.trim()).map((rule) => ({ path: rule.path.trim() })),
+    pathAccessLists: form.pathAccessLists
+      .filter((rule): rule is PathAccessListRow & { accessListId: number } => Boolean(rule.path.trim()) && rule.accessListId !== null)
+      .map((rule) => ({ path: rule.path.trim(), accessListId: rule.accessListId })),
     certificateId: form.certificateId,
     sslForced: form.sslForced,
     hstsEnabled: form.hstsEnabled,

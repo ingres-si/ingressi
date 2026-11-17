@@ -257,6 +257,13 @@ export function validateForm(form: HostForm, context: ValidationContext): FieldE
   form.pathAllows.forEach((rule, index) => {
     if (!rule.path.trim()) errors[`f-pa-${index}-path`] = { message: "Enter a path, or remove the row.", section: "access" };
   });
+  form.pathAccessLists.forEach((rule, index) => {
+    const path = rule.path.trim();
+    if (!path) errors[`f-pl-${index}-path`] = { message: "Enter a path, or remove the row.", section: "access" };
+    else if (!path.startsWith("/") && !path.startsWith("*")) errors[`f-pl-${index}-path`] = { message: "A path starts with /, for example /wp-admin/*.", section: "access" };
+    else if (/[{}]/.test(path)) errors[`f-pl-${index}-path`] = { message: "A path cannot contain { or }.", section: "access" };
+    if (rule.accessListId === null) errors[`f-pl-${index}-list`] = { message: "Choose an access list, or remove the row.", section: "access" };
+  });
 
   // Advanced
   form.redirects.forEach((rule, index) => {

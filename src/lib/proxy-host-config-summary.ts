@@ -88,6 +88,7 @@ function access(input: ProtectionInput, host: ProxyHost): string {
   if (input.forwardAuth) parts.push(input.forwardAuth === "authelia" ? "sign-in through Authelia" : "forward auth");
   if (input.accessList) parts.push(input.accessList.name ? `access list "${input.accessList.name}"` : "an access list");
   if (input.mtls) parts.push("client certificate required");
+  if ((host.pathAccessLists?.length ?? 0) > 0) parts.push(plural(host.pathAccessLists.length, "path access list"));
   if (host.pathBlocks.length > 0) parts.push(plural(host.pathBlocks.length, "blocked path"));
   if (parts.length === 0) return "Public: anyone who reaches the domain gets through";
   const text = parts.join(" · ");

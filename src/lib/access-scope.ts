@@ -311,6 +311,24 @@ function addsDestination(input: Partial<ProxyHostInput>, existing: ProxyHost): b
   );
 }
 
+/** Whether a write adds or removes a path access list (path and list) compared with the host's. */
+function pathAccessListsChanged(
+  value: unknown,
+  current: readonly { path: string; accessListId: number }[]
+): boolean {
+  if (value === null) return current.length > 0;
+  if (!Array.isArray(value)) return true;
+  const kept = new Set(current.map((rule) => `${rule.path}\u0000${rule.accessListId}`));
+  const next = new Set(
+    value.map((rule) => {
+      if (!rule || typeof rule !== "object") return "\u0001";
+      const { path, accessListId } = rule as { path?: unknown; accessListId?: unknown };
+      return `${typeof path === "string" ? path.trim() : ""}\u0000${String(accessListId)}`;
+    })
+  );
+  return next.size !== kept.size || [...next].some((key) => !kept.has(key));
+}
+
 /** The host's own WAF rule text, as Coraza gets it. */
 function wafDirectives(waf: WafHostConfig | null | undefined): string {
   const directives: unknown = waf?.custom_directives;
@@ -365,9 +383,14 @@ export async function assertProxyHostWriteAllowed(
     const visible = can(access, "certificates:read") && (await certificateVisible(access, certificateId));
     if (!visible) throw new ScopeError("You cannot use this certificate");
   }
-  const accessListId = input.accessListId;
-  if (accessListId !== undefined && accessListId !== null && accessListId !== existing?.accessListId) {
-    if (!can(access, "access_lists:read")) throw new ScopeError("Using an access list needs the access_lists:read permission");
+  // Adding, replacing or removing a host's access lists changes who may reach
+  // it: that is access list work, like editing the lists themselves.
+  const accessListChanged =
+    input.accessListId !== undefined && (input.accessListId ?? null) !== (existing?.accessListId ?? null);
+  const pathListsChanged =
+    input.pathAccessLists !== undefined && pathAccessListsChanged(input.pathAccessLists, existing?.pathAccessLists ?? []);
+  if ((accessListChanged || pathListsChanged) && !can(access, "access_lists:write")) {
+    throw new ScopeError("Changing a proxy host's access lists needs the access_lists:write permission");
   }
   if (mtlsReferencesChanged(input.mtls, existing?.mtls)) {
     if (!can(access, "certificates:read") || scopeTagsFor(access, "certificates") !== null) {

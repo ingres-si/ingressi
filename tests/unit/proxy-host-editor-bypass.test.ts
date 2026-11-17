@@ -70,6 +70,7 @@ const base: ProxyHost = {
   locationRules: [],
   pathAllows: [],
   pathBlocks: [],
+  pathAccessLists: [],
   pathRewrites: [],
   errorPages: [],
   rateLimit: null,

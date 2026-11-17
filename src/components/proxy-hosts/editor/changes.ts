@@ -381,6 +381,17 @@ export function changeGroups(mode: "create" | "edit"): ChangeGroup[] {
       restore: keys("pathBlocks"),
     },
     {
+      id: "pathAccessLists",
+      section: "access",
+      label: "Access lists for paths",
+      focus: "f-path-lists",
+      kind: "list",
+      value: (f) => f.pathAccessLists.map((rule) => ({ path: rule.path.trim(), accessListId: rule.accessListId })),
+      lines: (f, lookup) =>
+        f.pathAccessLists.map((rule) => `${rule.path.trim() || "(no path)"} → ${rule.accessListId === null ? "(no list)" : lookup.accessList(rule.accessListId)}`),
+      restore: keys("pathAccessLists"),
+    },
+    {
       id: "pathAllows",
       section: "access",
       label: "Paths that bypass blocks",

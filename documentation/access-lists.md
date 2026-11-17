@@ -53,6 +53,18 @@ A list can also have members (**Basic auth** on the list's page): usernames and 
 
 Turn on **Skip Basic Auth for allowed addresses** to ask for a username and password only from clients the list does not name. Clients that match an **Allow** address rule (an IP or CIDR; country, continent and AS number rules cannot skip it) go straight in; everyone else the rules let through still signs in. A client whose address cannot be worked out behind a trusted proxy is asked to sign in. The setting is `skipAuthForAllowed` in the REST API.
 
+## Lists for some paths only
+
+A host can also apply lists to some of its paths, under **Access → Access lists for paths** in the host editor (`pathAccessLists` in the proxy host API, a list of `{ "path": "/wp-admin/*", "accessListId": 3 }`). A request to a matching path must pass that list's rules and, if the list has members, sign in with one of them. The host's own list still applies too, so a path list can only narrow access: keep the host public and restrict `/wp-admin/*` to the office, for example, or let an app sign in only from one network while the rest of it works from anywhere.
+
+- Paths are Caddy path patterns: `/wp-admin/*` covers everything under `/wp-admin/` but not `/wp-admin` itself, so add both to cover both. Matching ignores case.
+- Every entry whose path matches applies, in order. They match the path the client asked for, before path rewrites.
+- They also cover paths routed to another upstream by path-based routing, and the sign-in in front of the host.
+- Deleting a list removes it from the paths that used it. A path whose list does not exist (left behind by an import, for example) is denied with `403`, never left open.
+- Blocked sources cannot be used.
+
+Basic Auth asks once per request: when the host's list and a path's list both have members, the same username and password must be valid in both.
+
 ## Blocked sources
 
 **Blocked sources** is one global list that applies to every host, before anything else: before rate limiting, the WAF, path rules and each host's own list. It only denies, and lets through everything it does not name. Use it for scanners and networks that keep probing.
@@ -68,9 +80,10 @@ On every request a server takes:
 1. Blocked sources
 2. Rate limiting
 3. WAF, geo blocking, then the host's access list rules
-4. Path blocks, path rewrites and redirects
-5. The host's access list members (basic auth) or the API monetization gate
-6. Forward auth and the upstream
+4. The rules and members of the lists for the request's path
+5. Path blocks, path rewrites and redirects
+6. The host's access list members (basic auth) or the API monetization gate
+7. Forward auth and the upstream
 
 Global geo blocking (the **Geo blocking** page) still works as before and runs before the host's list. A list cannot let in what global geo blocking refuses.
 
@@ -86,7 +99,7 @@ Rules and list settings sync to slave instances with the lists, and are part of 
 
 ## REST API
 
-Reading needs `access_lists:read`, changing needs `access_lists:write`. Every change applies the Caddy configuration and is recorded in the audit log.
+Reading needs `access_lists:read`, changing needs `access_lists:write`. A non-administrator also needs `access_lists:write` to add, replace or remove a proxy host's access list or its lists for paths. Every change applies the Caddy configuration and is recorded in the audit log.
 
 | Endpoint | |
 | --- | --- |

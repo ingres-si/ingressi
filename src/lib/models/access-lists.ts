@@ -707,6 +707,7 @@ export async function deleteAccessList(id: number, actorUserId: number) {
     await tx.delete(accessListRules).where(eq(accessListRules.accessListId, id));
     await tx.delete(accessListEntries).where(eq(accessListEntries.accessListId, id));
     await tx.update(proxyHosts).set({ accessListId: null, updatedAt: now }).where(eq(proxyHosts.accessListId, id));
+    await removeFromPathAccessLists(tx, id, now);
     await tx.delete(accessLists).where(eq(accessLists.id, id));
   });
 
@@ -1145,6 +1146,43 @@ export async function getAccessListUsageMap(): Promise<Map<number, AccessListUsa
     map.set(row.accessListId, bucket);
   }
   return map;
+}
+
+/** Path access lists of a host must name existing lists other than Blocked sources. */
+export async function assertPathAccessListsExist(ids: readonly number[]): Promise<void> {
+  if (ids.length === 0) return;
+  const rows = await appDb.select().from(accessLists).where(inArray(accessLists.id, [...ids]));
+  for (const id of ids) {
+    const row = rows.find((candidate) => candidate.id === id);
+    if (!row) throw new ApiValidationError(`Access list ${id} does not exist`);
+    if (isSystemList(row)) {
+      throw new ApiValidationError("The Blocked sources list applies to every host and cannot be attached to a path");
+    }
+  }
+}
+
+/**
+ * Removes a deleted list from the path access lists of every host. Hosts keep
+ * the rest of their settings; the path is no longer covered by that list.
+ */
+async function removeFromPathAccessLists(tx: AppTx, listId: number, now: string): Promise<void> {
+  const hosts = await tx.select({ id: proxyHosts.id, meta: proxyHosts.meta }).from(proxyHosts);
+  for (const host of hosts) {
+    if (!host.meta || !host.meta.includes("path_access_lists")) continue;
+    let meta: Record<string, unknown>;
+    try {
+      meta = JSON.parse(host.meta);
+    } catch {
+      continue;
+    }
+    const rules = meta.path_access_lists;
+    if (!Array.isArray(rules)) continue;
+    const kept = rules.filter((rule) => !(rule && typeof rule === "object" && (rule as { access_list_id?: unknown }).access_list_id === listId));
+    if (kept.length === rules.length) continue;
+    if (kept.length > 0) meta.path_access_lists = kept;
+    else delete meta.path_access_lists;
+    await tx.update(proxyHosts).set({ meta: JSON.stringify(meta), updatedAt: now }).where(eq(proxyHosts.id, host.id));
+  }
 }
 
 /** Refuses attaching the global Blocked sources list to a host: it applies to every host already. */

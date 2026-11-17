@@ -46,7 +46,7 @@ function AccessListCard() {
           value={form.accessListId === null ? "" : String(form.accessListId)}
           onChange={(value) => update((f) => ({ ...f, accessListId: value ? Number(value) : null }))}
           disabled={!data.canChooseAccessLists}
-          hint={data.canChooseAccessLists ? undefined : "Choosing an access list needs the access_lists:read permission."}
+          hint={data.canChooseAccessLists ? undefined : "Changing a host's access lists needs the access_lists:write permission."}
         >
           <option value="">None, public</option>
           {data.accessLists.map((list) => (
@@ -474,6 +474,93 @@ function MtlsCard() {
   );
 }
 
+function PathAccessListsCard() {
+  const { form, update, data } = useEditor();
+  const setRows = (recipe: (rows: typeof form.pathAccessLists) => typeof form.pathAccessLists) =>
+    update((f) => ({ ...f, pathAccessLists: recipe(f.pathAccessLists) }));
+  return (
+    <EditorCard
+      id="f-path-lists"
+      title="Access lists for paths"
+      was="pathAccessLists"
+      actions={
+        data.canChooseAccessLists ? (
+          <AddButton onClick={() => setRows((rows) => [...rows, { key: rowKey("pl"), path: "", accessListId: null }])}>Add path</AddButton>
+        ) : undefined
+      }
+      flush
+    >
+      <p className="m-0 px-5 pt-3.5 text-[13px] text-muted-foreground">
+        Requests to these paths must also pass the list&apos;s rules and Basic Auth, on top of the host&apos;s own list. Use /wp-admin/* for everything under a
+        path; add /wp-admin too to cover the path itself.
+      </p>
+      {form.pathAccessLists.length === 0 ? (
+        <p className="m-0 px-5 py-3.5 text-[13px] text-muted-foreground">No paths with their own access list.</p>
+      ) : (
+        <ul className="m-0 list-none p-0 pt-1.5">
+          {form.pathAccessLists.map((row, index) => (
+            <PathAccessListRow
+              key={row.key}
+              index={index}
+              row={row}
+              lists={data.accessLists}
+              disabled={!data.canChooseAccessLists}
+              onChange={(next) => setRows((rows) => rows.map((current) => (current.key === row.key ? next : current)))}
+              onRemove={() => setRows((rows) => rows.filter((current) => current.key !== row.key))}
+            />
+          ))}
+        </ul>
+      )}
+      {!data.canChooseAccessLists && (
+        <p className="m-0 px-5 pb-3.5 text-xs text-soft">Changing a host&apos;s access lists needs the access_lists:write permission.</p>
+      )}
+    </EditorCard>
+  );
+}
+
+type PathListRow = { key: string; path: string; accessListId: number | null };
+
+function PathAccessListRow({ row, index, lists, disabled, onChange, onRemove }: {
+  row: PathListRow;
+  index: number;
+  lists: readonly { id: number; name: string }[];
+  disabled: boolean;
+  onChange: (row: PathListRow) => void;
+  onRemove: () => void;
+}) {
+  const pathProps = useFieldProps(`f-pl-${index}-path`);
+  const listProps = useFieldProps(`f-pl-${index}-list`);
+  const known = row.accessListId === null || lists.some((list) => list.id === row.accessListId);
+  return (
+    <li className={cn("flex flex-col gap-1 border-line px-5 py-3", index > 0 && "border-t")}>
+      <div className="grid grid-cols-[minmax(0,1fr)_32px] items-center gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_32px]">
+        <Input {...pathProps} aria-label={`Path ${index + 1}`} value={row.path} placeholder="/wp-admin/*" className="num" disabled={disabled} onChange={(event) => onChange({ ...row, path: event.target.value })} />
+        <NativeSelect
+          {...listProps}
+          aria-label={`Access list for path ${index + 1}`}
+          value={row.accessListId === null ? "" : String(row.accessListId)}
+          className="col-span-1 row-start-2 sm:row-start-auto"
+          disabled={disabled}
+          onChange={(event) => onChange({ ...row, accessListId: event.target.value ? Number(event.target.value) : null })}
+        >
+          <option value="">Choose a list</option>
+          {!known && <option value={String(row.accessListId)}>List #{row.accessListId}</option>}
+          {lists.map((list) => (
+            <option key={list.id} value={list.id}>
+              {list.name}
+            </option>
+          ))}
+        </NativeSelect>
+        <span className="col-start-2 row-start-1 sm:col-start-auto">
+          {!disabled && <RemoveButton label={`Remove path ${row.path || index + 1}`} onClick={onRemove} />}
+        </span>
+      </div>
+      <FieldError id={`f-pl-${index}-path`} />
+      <FieldError id={`f-pl-${index}-list`} />
+    </li>
+  );
+}
+
 function BlockedPathsCard() {
   const { form, update } = useEditor();
   const setBlocks = (recipe: (rows: typeof form.pathBlocks) => typeof form.pathBlocks) => update((f) => ({ ...f, pathBlocks: recipe(f.pathBlocks) }));
@@ -564,6 +651,7 @@ export function AccessSection() {
   return (
     <>
       <AccessListCard />
+      <PathAccessListsCard />
       <SignInCard />
       <MtlsCard />
       <BlockedPathsCard />

@@ -82,6 +82,7 @@ function sectionSummary(section: SectionId, form: HostForm, data: HostEditorData
         form.accessListId !== null ? data.accessLists.find((list) => list.id === form.accessListId)?.name ?? "Access list" : null,
         form.signIn === "authentik" ? "Authentik" : form.signIn === "generic" ? "Forward auth" : form.signIn === "ingressi" ? "Sign-in" : null,
         form.mtls.enabled ? "mTLS" : null,
+        form.pathAccessLists.length > 0 ? plural(form.pathAccessLists.length, "path access list") : null,
         form.pathBlocks.length > 0 ? plural(form.pathBlocks.length, "blocked path") : null,
       ].filter(Boolean);
       return parts.length > 0 ? parts.join(" · ") : "Public";

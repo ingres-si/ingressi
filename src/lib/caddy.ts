@@ -90,7 +90,7 @@ import {
   proxyHosts,
   l4ProxyHosts
 } from "./db/schema";
-import { type GeoBlockMode, type WafHostConfig, type MtlsConfig, type RedirectRule, type RewriteConfig, type LocationRuleMeta, type PathAllowRule, type PathBlockRule, type PathRewriteRule, type ErrorPageRule } from "./models/proxy-hosts";
+import { type GeoBlockMode, type WafHostConfig, type MtlsConfig, type RedirectRule, type RewriteConfig, type LocationRuleMeta, type PathAllowRule, type PathBlockRule, type PathAccessListMeta, type PathRewriteRule, type ErrorPageRule } from "./models/proxy-hosts";
 import { stripPlaceholders } from "./caddy-placeholders";
 import { buildClientAuthentication, groupMtlsDomainsByCaSet, buildMtlsRbacSubroutes, buildFingerprintCelExpression, buildValidClientCertCelExpression, resolveAllowedFingerprints, type MtlsAccessRuleLike } from "./caddy-mtls";
 import { buildRoleFingerprintMap, buildCertFingerprintMap, buildRoleCertIdMap } from "./models/mtls-roles";
@@ -136,7 +136,9 @@ import {
   type CompiledAccessList,
 } from "./caddy-access-lists";
 import {
+  ACCESS_LIST_LOG_FIELD,
   BLOCKED_SOURCES_KEY,
+  DEFAULT_DENY_BODY,
   DEFAULT_DENY_STATUS,
   isRuleAction,
   isRuleExpired,
@@ -498,6 +500,7 @@ type ProxyHostMeta = {
   location_rules?: LocationRuleMeta[];
   path_allows?: PathAllowRule[];
   path_blocks?: PathBlockRule[];
+  path_access_lists?: PathAccessListMeta[];
   path_rewrites?: PathRewriteRule[];
   error_pages?: ErrorPageRule[];
   /** Read through readStoredHostRateLimit, which drops anything invalid. */
@@ -1223,6 +1226,11 @@ type BuildProxyRoutesOptions = {
   /** Clients that skip a list's Basic Auth (skipAuthForAllowed), by list id. */
   accessListAuthBypass?: ReadonlyMap<number, Record<string, unknown>>;
   /**
+   * Ids of the access lists a host or path may use (not Blocked sources). A
+   * path access list naming any other id denies the path.
+   */
+  attachableAccessListIds?: ReadonlySet<number>;
+  /**
    * The server's trusted proxy ranges, normalized (private_ranges expanded):
    * with some, the sign-in bypass matches the client address behind them,
    * without, the address of the connection (as access list rules do).
@@ -1351,6 +1359,68 @@ function insertSourceBypassRoutes(
   routes.splice(start, routes.length - start, ...out);
 }
 
+/** The Basic Auth handler of an access list's members; null when it has none. */
+function accessListBasicAuthHandler(
+  listId: number,
+  accessAccounts: Map<number, AccessListEntryRow[]>,
+  options: BuildProxyRoutesOptions
+): Record<string, unknown> | null {
+  const accounts = accessAccounts.get(listId) ?? [];
+  if (accounts.length === 0) return null;
+  const basicAuth: Record<string, unknown> = {
+    handler: "authentication",
+    providers: {
+      http_basic: {
+        accounts: accounts.map((entry) => ({
+          username: entry.username,
+          password: entry.passwordHash
+        }))
+      }
+    }
+  };
+  // Clients on the list's allow address rules skip the credentials.
+  const bypass = options.accessListAuthBypass?.get(listId);
+  return bypass
+    ? { handler: "subroute", routes: [{ match: [{ not: [bypass] }], handle: [basicAuth] }] }
+    : basicAuth;
+}
+
+/**
+ * Path access lists (#387): for each path pattern, the list's rules and then
+ * its Basic Auth, on top of the host's own list. Every matching entry applies,
+ * in order. A list that does not exist (any more) denies the path rather than
+ * leaving it open.
+ */
+export function buildPathAccessListHandler(
+  rules: readonly PathAccessListMeta[] | undefined,
+  accessAccounts: Map<number, AccessListEntryRow[]>,
+  options: BuildProxyRoutesOptions
+): Record<string, unknown> | null {
+  const routes: CaddyHttpRoute[] = [];
+  for (const rule of rules ?? []) {
+    const safePath = stripPlaceholders(rule.path);
+    if (!safePath) continue;
+    const id = rule.access_list_id;
+    const exists = options.attachableAccessListIds
+      ? options.attachableAccessListIds.has(id)
+      : options.accessListInvokes?.has(id) || accessAccounts.has(id);
+    const handle: Record<string, unknown>[] = [];
+    if (!exists) {
+      handle.push(
+        { handler: "log_append", key: ACCESS_LIST_LOG_FIELD, value: String(id) },
+        { handler: "static_response", status_code: DEFAULT_DENY_STATUS, body: DEFAULT_DENY_BODY }
+      );
+    } else {
+      const invoke = options.accessListInvokes?.get(id);
+      if (invoke) handle.push(invoke);
+      const basicAuth = accessListBasicAuthHandler(id, accessAccounts, options);
+      if (basicAuth) handle.push(basicAuth);
+    }
+    if (handle.length > 0) routes.push({ match: [{ path: [safePath] }], handle });
+  }
+  return routes.length > 0 ? { handler: "subroute", routes } : null;
+}
+
 async function buildProxyRoutes(
   rows: ProxyHostRow[],
   accessAccounts: Map<number, AccessListEntryRow[]>,
@@ -1413,6 +1483,12 @@ async function buildProxyRoutes(
     const accessListInvoke = row.accessListId ? options.accessListInvokes?.get(row.accessListId) : undefined;
     if (accessListInvoke) {
       handlers.push(accessListInvoke);
+    }
+    // Lists for some paths only, after the host's own list and before path
+    // blocks, redirects and forward auth (so they also cover sign-in).
+    const pathAccessLists = buildPathAccessListHandler(meta.path_access_lists, accessAccounts, options);
+    if (pathAccessLists) {
+      handlers.push(pathAccessLists);
     }
 
     const effectiveWaf = resolveEffectiveWaf(
@@ -1574,27 +1650,8 @@ async function buildProxyRoutes(
     }
 
     if (row.accessListId) {
-      const accounts = accessAccounts.get(row.accessListId) ?? [];
-      if (accounts.length > 0) {
-        const basicAuth: Record<string, unknown> = {
-          handler: "authentication",
-          providers: {
-            http_basic: {
-              accounts: accounts.map((entry) => ({
-                username: entry.username,
-                password: entry.passwordHash
-              }))
-            }
-          }
-        };
-        // Clients on the list's allow address rules skip the credentials.
-        const bypass = options.accessListAuthBypass?.get(row.accessListId);
-        handlers.push(
-          bypass
-            ? { handler: "subroute", routes: [{ match: [{ not: [bypass] }], handle: [basicAuth] }] }
-            : basicAuth
-        );
-      }
+      const basicAuth = accessListBasicAuthHandler(row.accessListId, accessAccounts, options);
+      if (basicAuth) handlers.push(basicAuth);
     }
 
     if (monetized) {
@@ -3439,6 +3496,7 @@ async function buildCaddyDocumentFromDatabase() {
       wafExclusions: await listWafExclusionRows(),
       accessListInvokes: accessListConfig.invokes,
       accessListAuthBypass: accessListConfig.authBypassMatchers,
+      attachableAccessListIds: new Set(accessListRecords.filter((list) => !list.systemKey).map((list) => list.id)),
       trustedProxies: normalizeTrustedProxyRanges(trustedProxiesSettings?.ranges),
       geoBlockTrustedProxies,
     }

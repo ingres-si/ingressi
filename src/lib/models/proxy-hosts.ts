@@ -34,7 +34,7 @@ import {
   syncWafExclusionMirror,
 } from "./waf-exclusion-mirror";
 import { applyOrUndo, caddyAcceptedLastApply } from "../rejected-apply";
-import { assertAttachableAccessList } from "./access-lists";
+import { assertAttachableAccessList, assertPathAccessListsExist } from "./access-lists";
 import { revokeForwardAuthSessionsOfDeletedHosts } from "./forward-auth";
 import { asc, containsText, desc, first } from "@/src/lib/db/ops";
 
@@ -154,6 +154,24 @@ export type PathBlockRule = {
   status: PathBlockStatusCode;     // status code to return, e.g. 403
   body?: string;                   // optional response body, e.g. "Forbidden"
 };
+
+/**
+ * An access list applied to the requests of one path pattern, on top of the
+ * host's own list: its address, country and AS number rules and its Basic
+ * Auth members. Every rule whose path matches applies.
+ */
+export type PathAccessListRule = {
+  path: string;          // Caddy path pattern, e.g. "/wp-admin/*"
+  accessListId: number;
+};
+
+export type PathAccessListMeta = {
+  path: string;
+  access_list_id: number;
+};
+
+/** At most this many path access lists per host. */
+export const MAX_PATH_ACCESS_LISTS = 100;
 
 export type PathRewriteRule = {
   from: string;   // path pattern, e.g. "/secretpath"
@@ -617,6 +635,7 @@ type ProxyHostMeta = {
   location_rules?: LocationRuleMeta[];
   path_allows?: PathAllowRule[];
   path_blocks?: PathBlockRule[];
+  path_access_lists?: PathAccessListMeta[];
   path_rewrites?: PathRewriteRule[];
   error_pages?: ErrorPageRule[];
   rate_limit?: ProxyHostRateLimit;
@@ -655,6 +674,8 @@ export type ProxyHost = {
   locationRules: LocationRule[];
   pathAllows: PathAllowRule[];
   pathBlocks: PathBlockRule[];
+  /** Access lists applied to some paths only, on top of accessListId. */
+  pathAccessLists: PathAccessListRule[];
   pathRewrites: PathRewriteRule[];
   errorPages: ErrorPageRule[];
   /** Per-host rate limiting; null inherits the global defaults. */
@@ -693,6 +714,8 @@ export type ProxyHostInput = {
   locationRules?: LocationRuleInput[] | null;
   pathAllows?: PathAllowRule[] | null;
   pathBlocks?: PathBlockRule[] | null;
+  /** Access lists for some paths only; null or [] removes them all. */
+  pathAccessLists?: PathAccessListRule[] | null;
   pathRewrites?: PathRewriteRule[] | null;
   errorPages?: ErrorPageRule[] | null;
   /** Per-host rate limiting; null removes it, so the host inherits the global defaults. */
@@ -1120,6 +1143,10 @@ function serializeMeta(meta: ProxyHostMeta | null | undefined) {
     normalized.path_blocks = meta.path_blocks;
   }
 
+  if (meta.path_access_lists && meta.path_access_lists.length > 0) {
+    normalized.path_access_lists = meta.path_access_lists;
+  }
+
   if (meta.path_rewrites && meta.path_rewrites.length > 0) {
     normalized.path_rewrites = meta.path_rewrites;
   }
@@ -1202,6 +1229,56 @@ function sanitizePathBlocks(value: unknown): PathBlockRule[] {
     }
   }
   return valid;
+}
+
+/** Stored path access lists; entries that cannot be read are left out. */
+function sanitizePathAccessListMetas(value: unknown): PathAccessListMeta[] {
+  if (!Array.isArray(value)) return [];
+  const valid: PathAccessListMeta[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const { path, access_list_id: id } = item as { path?: unknown; access_list_id?: unknown };
+    if (typeof path !== "string" || !Number.isSafeInteger(id) || (id as number) <= 0) continue;
+    const safePath = stripPlaceholders(path.trim());
+    if (safePath) valid.push({ path: safePath, access_list_id: id as number });
+  }
+  return valid;
+}
+
+/**
+ * Path access lists from a write. Unlike the other path rules, an entry that
+ * cannot be read is refused, not dropped: dropping it would leave the path
+ * open.
+ */
+export function normalizePathAccessListsInput(value: unknown): PathAccessListMeta[] {
+  if (value === null || value === undefined) return [];
+  if (!Array.isArray(value)) throw new ApiValidationError("pathAccessLists must be a list of { path, accessListId }");
+  if (value.length > MAX_PATH_ACCESS_LISTS) {
+    throw new ApiValidationError(`pathAccessLists can have at most ${MAX_PATH_ACCESS_LISTS} entries`);
+  }
+  const rules: PathAccessListMeta[] = [];
+  const seen = new Set<string>();
+  value.forEach((item, index) => {
+    const label = `pathAccessLists[${index}]`;
+    if (!item || typeof item !== "object") throw new ApiValidationError(`${label} must be an object with path and accessListId`);
+    const { path, accessListId } = item as { path?: unknown; accessListId?: unknown };
+    if (typeof path !== "string" || !path.trim()) throw new ApiValidationError(`${label}.path is required`);
+    const trimmed = path.trim();
+    if (!trimmed.startsWith("/") && !trimmed.startsWith("*")) {
+      throw new ApiValidationError(`${label}.path must start with / (for example /wp-admin/*)`);
+    }
+    if (trimmed.length > 1024) throw new ApiValidationError(`${label}.path is longer than 1024 characters`);
+    const safePath = stripPlaceholders(trimmed);
+    if (safePath !== trimmed) throw new ApiValidationError(`${label}.path cannot contain { or }`);
+    if (!Number.isSafeInteger(accessListId) || (accessListId as number) <= 0) {
+      throw new ApiValidationError(`${label}.accessListId must be the id of an access list`);
+    }
+    const key = `${safePath}\u0000${accessListId}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    rules.push({ path: safePath, access_list_id: accessListId as number });
+  });
+  return rules;
 }
 
 function sanitizePathRewrites(value: unknown): PathRewriteRule[] {
@@ -1346,6 +1423,7 @@ function parseMeta(value: string | null): ProxyHostMeta {
       location_rules: sanitizeLocationRuleMetas(parsed.location_rules),
       path_allows: sanitizePathAllows(parsed.path_allows),
       path_blocks: sanitizePathBlocks(parsed.path_blocks),
+      path_access_lists: sanitizePathAccessListMetas(parsed.path_access_lists),
       path_rewrites: sanitizePathRewrites(parsed.path_rewrites),
       error_pages: sanitizeErrorPageRules(parsed.error_pages),
       rate_limit: readStoredHostRateLimit(parsed.rate_limit) ?? undefined,
@@ -2108,6 +2186,15 @@ function buildMeta(
     }
   }
 
+  if (input.pathAccessLists !== undefined) {
+    const rules = normalizePathAccessListsInput(input.pathAccessLists);
+    if (rules.length > 0) {
+      next.path_access_lists = rules;
+    } else {
+      delete next.path_access_lists;
+    }
+  }
+
   if (input.pathRewrites !== undefined) {
     const rules = sanitizePathRewrites(input.pathRewrites ?? []);
     if (rules.length > 0) {
@@ -2571,6 +2658,7 @@ function parseProxyHost(row: ProxyHostRow): ProxyHost {
     locationRules: hydrateLocationRules(meta.location_rules),
     pathAllows: meta.path_allows ?? [],
     pathBlocks: meta.path_blocks ?? [],
+    pathAccessLists: (meta.path_access_lists ?? []).map((rule) => ({ path: rule.path, accessListId: rule.access_list_id })),
     pathRewrites: meta.path_rewrites ?? [],
     errorPages: meta.error_pages ?? [],
     rateLimit: meta.rate_limit ?? null,
@@ -2682,6 +2770,21 @@ export function toApiProxyHost(
   return { ...host, [LEGACY_FORWARD_AUTH_FIELD]: host.ingressiForwardAuth };
 }
 
+/**
+ * The lists a write's path access lists name must exist and be attachable;
+ * lists the host already uses for the same path are not checked again.
+ */
+async function assertAttachablePathAccessLists(
+  value: unknown,
+  current: readonly PathAccessListRule[]
+): Promise<void> {
+  const kept = new Set(current.map((rule) => `${rule.path}\u0000${rule.accessListId}`));
+  const added = normalizePathAccessListsInput(value).filter((rule) => !kept.has(`${rule.path}\u0000${rule.access_list_id}`));
+  const ids = [...new Set(added.map((rule) => rule.access_list_id))];
+  if (ids.length === 0) return;
+  await assertPathAccessListsExist(ids);
+}
+
 export async function createProxyHost(rawInput: ProxyHostInput, actorUserId: number) {
   const input = resolveLegacyInputFields(rawInput);
   const domains = normalizeProxyHostDomains(input.domains ?? []);
@@ -2696,6 +2799,7 @@ export async function createProxyHost(rawInput: ProxyHostInput, actorUserId: num
   // Change approvals (ee): a host a policy protects is only created through an approved change request.
   await assertHostCreateApproved("proxy_host", input.name, tags);
   await assertAttachableAccessList(input.accessListId);
+  await assertAttachablePathAccessLists(input.pathAccessLists, []);
   const acceptedBefore = await caddyAcceptedLastApply();
 
   const now = nowIso();
@@ -2793,6 +2897,9 @@ export async function updateProxyHost(id: number, rawInput: Partial<ProxyHostInp
   if (input.accessListId !== undefined && input.accessListId !== existing.accessListId) {
     await assertAttachableAccessList(input.accessListId);
   }
+  if (input.pathAccessLists !== undefined) {
+    await assertAttachablePathAccessLists(input.pathAccessLists, existing.pathAccessLists);
+  }
   const domains = JSON.stringify(domainList);
   if (input.upstreams) {
     input.upstreams.forEach(validateUpstreamProtocol);
@@ -2827,6 +2934,9 @@ export async function updateProxyHost(id: number, rawInput: Partial<ProxyHostInp
     ...(existing.locationRules && existing.locationRules.length > 0 ? { location_rules: dehydrateLocationRules(existing.locationRules) } : {}),
     ...(existing.pathAllows && existing.pathAllows.length > 0 ? { path_allows: existing.pathAllows } : {}),
     ...(existing.pathBlocks && existing.pathBlocks.length > 0 ? { path_blocks: existing.pathBlocks } : {}),
+    ...(existing.pathAccessLists && existing.pathAccessLists.length > 0
+      ? { path_access_lists: existing.pathAccessLists.map((rule) => ({ path: rule.path, access_list_id: rule.accessListId })) }
+      : {}),
     ...(existing.pathRewrites && existing.pathRewrites.length > 0 ? { path_rewrites: existing.pathRewrites } : {}),
     ...(existing.errorPages && existing.errorPages.length > 0 ? { error_pages: existing.errorPages } : {}),
     ...(existing.rateLimit ? { rate_limit: existing.rateLimit } : {}),

@@ -37,6 +37,7 @@ function host(extra: Partial<ProxyHost> = {}): ProxyHost {
     locationRules: [],
     pathAllows: [],
     pathBlocks: [],
+    pathAccessLists: [],
     pathRewrites: [],
     errorPages: [],
     rateLimit: null,

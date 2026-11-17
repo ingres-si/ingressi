@@ -3657,6 +3657,14 @@ const spec = {
         },
         required: ["path"],
       },
+      PathAccessListRule: {
+        type: "object",
+        properties: {
+          path: { type: "string", example: "/wp-admin/*", description: "Caddy path pattern; starts with / and has no { or }" },
+          accessListId: { type: "integer", description: "An access list other than Blocked sources" },
+        },
+        required: ["path", "accessListId"],
+      },
       PathBlockRule: {
         type: "object",
         description: "Block a request path with a static response (no proxying)",
@@ -3718,6 +3726,12 @@ const spec = {
           locationRules: { type: "array", items: { $ref: "#/components/schemas/LocationRule" }, description: "Path-based routing rules (routes specific paths to different upstreams)" },
           pathAllows: { type: "array", items: { $ref: "#/components/schemas/PathAllowRule" }, description: "Paths that bypass any matching Path Block and reach the upstream (evaluated first)" },
           pathBlocks: { type: "array", items: { $ref: "#/components/schemas/PathBlockRule" }, description: "Paths blocked with a static response" },
+          pathAccessLists: {
+            type: "array",
+            maxItems: 100,
+            items: { $ref: "#/components/schemas/PathAccessListRule" },
+            description: "Access lists applied to some paths only, on top of accessListId: a request to a matching path must pass each matching list's rules and Basic Auth. A list that no longer exists denies the path. On input, an empty array or null removes them all",
+          },
           pathRewrites: { type: "array", items: { $ref: "#/components/schemas/PathRewriteRule" }, description: "Internal URI rewrites applied before proxying" },
           rateLimit: { oneOf: [{ $ref: "#/components/schemas/ProxyHostRateLimit" }, { type: "null" }], description: "Per-host rate limiting; null inherits the global defaults" },
           tags: { $ref: "#/components/schemas/HostTags" },
@@ -3761,6 +3775,12 @@ const spec = {
           locationRules: { type: "array", items: { $ref: "#/components/schemas/LocationRule" }, description: "Path-based routing rules (routes specific paths to different upstreams)" },
           pathAllows: { type: "array", items: { $ref: "#/components/schemas/PathAllowRule" }, description: "Paths that bypass any matching Path Block and reach the upstream (evaluated first)" },
           pathBlocks: { type: "array", items: { $ref: "#/components/schemas/PathBlockRule" }, description: "Paths blocked with a static response" },
+          pathAccessLists: {
+            type: "array",
+            maxItems: 100,
+            items: { $ref: "#/components/schemas/PathAccessListRule" },
+            description: "Access lists applied to some paths only, on top of accessListId: a request to a matching path must pass each matching list's rules and Basic Auth. A list that no longer exists denies the path. On input, an empty array or null removes them all",
+          },
           pathRewrites: { type: "array", items: { $ref: "#/components/schemas/PathRewriteRule" }, description: "Internal URI rewrites applied before proxying" },
           rateLimit: {
             oneOf: [{ $ref: "#/components/schemas/ProxyHostRateLimit" }, { type: "null" }],

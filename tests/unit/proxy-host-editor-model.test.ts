@@ -67,6 +67,7 @@ function host(overrides: Partial<ProxyHost> = {}): ProxyHost {
     locationRules: [{ path: '/api/*', upstreams: ['http://10.0.0.9:9000'], loadBalancer: null }],
     pathAllows: [],
     pathBlocks: [{ path: '/metrics', status: 404 }],
+    pathAccessLists: [],
     pathRewrites: [],
     errorPages: [{ statuses: [502, 503], body: '<h1>Down</h1>' }],
     rateLimit: { enabled: true, mode: 'merge', rules: [{ path: '/login', methods: ['POST'], key: 'client_ip', events: 5, window: '30s' }] },
@@ -301,6 +302,20 @@ describe('host editor payload', () => {
     expect(input.errorPages).toEqual([{ statuses: [502, 503], body: '<h1>Down</h1>' }]);
     expect(input.pathBlocks).toEqual([{ path: '/metrics', status: 404 }]);
     expect(input.redirects).toEqual(stored.redirects);
+  });
+
+  it('sends path access lists, leaving out rows without a path or a list (#387)', () => {
+    const stored = host({ pathAccessLists: [{ path: '/wp-admin/*', accessListId: 4 }] });
+    const saved = hostToForm(stored);
+    expect(formToInput(saved, saved, stored).pathAccessLists).toEqual([{ path: '/wp-admin/*', accessListId: 4 }]);
+    const form = edited(saved, (f) => ({
+      ...f,
+      pathAccessLists: [...f.pathAccessLists, { key: 'a', path: ' /auth/* ', accessListId: 7 }, { key: 'b', path: '/x', accessListId: null }],
+    }));
+    expect(buildPayload(form, saved, stored, false).host.pathAccessLists).toEqual([
+      { path: '/wp-admin/*', accessListId: 4 },
+      { path: '/auth/*', accessListId: 7 },
+    ]);
   });
 });
 

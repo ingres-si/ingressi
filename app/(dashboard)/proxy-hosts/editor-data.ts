@@ -222,7 +222,7 @@ export async function loadHostEditorData(
     canChooseTrust: picker.trustAnchors,
     canChooseUsers,
     canChooseGroups,
-    canChooseAccessLists: access.isAdmin || can(access, "access_lists:read"),
+    canChooseAccessLists: access.isAdmin || can(access, "access_lists:write"),
     isAdmin: access.isAdmin,
     authentikDefaults,
     forwardAuthDefaults,

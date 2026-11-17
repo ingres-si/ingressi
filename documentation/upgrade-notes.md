@@ -2,6 +2,11 @@
 
 Pull the new images and recreate the containers with `docker compose pull && docker compose up -d`. (`docker compose restart` does not re-read `.env`.)
 
+## Upgrading to the next release
+
+- **Access lists for some paths** of a host (`pathAccessLists`, **Access → Access lists for paths**): requests to those paths must also pass the list's rules and Basic Auth. See [access-lists.md](access-lists.md#lists-for-some-paths-only). (#387)
+- **Changing a proxy host's access list needs `access_lists:write`.** A non-administrator used to need `access_lists:read` to choose one and nothing to remove one. Roles that should keep doing this need `access_lists:write`.
+
 ## Upgrading to v2.11.1
 
 - **WAF outcomes are matched to the exact request.** Analytics used to pair a WAF block with an access log line by client address, host, path and time, so in a quick burst to one path a successful request could be counted as the blocked one and the real block as served. Caddy now writes Coraza's transaction ID into the access log of WAF-protected hosts and analytics matches on it. Outcomes already stored are not rewritten.
