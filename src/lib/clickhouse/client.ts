@@ -336,33 +336,38 @@ export interface WafEventRow {
   tx_id?: string;
 }
 
-/** DateTime stores UInt32 epoch seconds. Reject invalid input instead of wrapping it. */
-function eventEpoch(ts: number): number {
-  if (!Number.isFinite(ts) || ts < 0 || ts >= 0x1_0000_0000) throw new RangeError('Event timestamp is outside the ClickHouse DateTime epoch range');
-  return Math.floor(ts);
+/**
+ * DateTime stores UInt32 epoch seconds. Rows outside that range are dropped,
+ * not wrapped; throwing would fail the whole batch and the parser would re-read
+ * the same lines on every pass.
+ */
+function withEventEpochs<T extends { ts: number }>(rows: T[], table: string): T[] {
+  const valid = rows.filter(r => Number.isFinite(r.ts) && r.ts >= 0 && r.ts < 0x1_0000_0000);
+  if (valid.length < rows.length) console.warn(`[clickhouse] skipped ${rows.length - valid.length} ${table} rows with an invalid timestamp`);
+  return valid.map(r => ({ ...r, ts: Math.floor(r.ts) }));
 }
 
 export async function insertTrafficEvents(rows: TrafficEventRow[]): Promise<void> {
   if (!analyticsConfigured || rows.length === 0) return;
   const ch = getClient();
   // Numeric Unix seconds are unambiguous even before an existing table is migrated.
-  const values = rows.map(r => ({
+  const values = withEventEpochs(rows, 'traffic_events').map(r => ({
     ...r,
-    ts: eventEpoch(r.ts),
     is_blocked: r.is_blocked ? 1 : 0,
     is_rate_limited: r.is_rate_limited ? 1 : 0,
   }));
+  if (values.length === 0) return;
   await ch.insert({ table: 'traffic_events', values, format: 'JSONEachRow' });
 }
 
 export async function insertWafEvents(rows: WafEventRow[]): Promise<void> {
   if (!analyticsConfigured || rows.length === 0) return;
   const ch = getClient();
-  const values = rows.map(r => ({
+  const values = withEventEpochs(rows, 'waf_events').map(r => ({
     ...r,
-    ts: eventEpoch(r.ts),
     blocked: r.blocked ? 1 : 0,
   }));
+  if (values.length === 0) return;
   await ch.insert({ table: 'waf_events', values, format: 'JSONEachRow' });
 }
 

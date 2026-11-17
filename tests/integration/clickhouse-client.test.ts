@@ -281,9 +281,15 @@ describe('ClickHouse UTC timestamp contract (issue 400)', () => {
       await client.insertWafEvents([{ ts: epoch, blocked: true } as never]);
     }
     expect(insert.mock.calls.map(([x]) => x.values[0].ts)).toEqual([0, 0, 1793511000, 1793511000, 1793514600, 1793514600, 4294967295, 4294967295]);
+    // Out-of-range rows are dropped so one bad line cannot stall ingestion.
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    insert.mockClear();
     for (const ts of [NaN, Infinity, -1, 4294967296]) {
-      await expect(client.insertTrafficEvents([{ ts } as never])).rejects.toThrow(RangeError);
-      await expect(client.insertWafEvents([{ ts } as never])).rejects.toThrow(RangeError);
+      await client.insertTrafficEvents([{ ts } as never]);
+      await client.insertWafEvents([{ ts } as never]);
     }
+    expect(insert).not.toHaveBeenCalled();
+    await client.insertTrafficEvents([{ ts: -1 } as never, { ts: 1793514600, is_blocked: false, is_rate_limited: false } as never]);
+    expect(insert.mock.calls.map(([x]) => x.values.map((v: { ts: number }) => v.ts))).toEqual([[1793514600]]);
   });
 });

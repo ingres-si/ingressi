@@ -422,6 +422,7 @@ describe('certificate availability versus expiry (issue 399)', () => {
       { expiresAt: '2026-11-17T18:00:00Z', daysLeft: 0, name: 'today' },
       { expiresAt: '2026-11-16T18:00:00Z', name: 'expired managed', state: 'expired' },
       { expiresAt: 'invalid', name: 'invalid' },
+      { expiresAt: '2026-12-07T12:00:00Z', daysLeft: 20, name: 'overdue', state: 'renewal_overdue' },
     ];
     vi.spyOn(certEvaluators, 'evaluateCertExpiring').mockResolvedValue({ status: 'ok', findings: rows.map((facts) => ({ subjectKey: JSON.stringify(facts), label: 'Certificate', title: 'Certificate', message: 'Check certificate status', severity: 'warning', facts })) });
     const facts = await collectDigestFacts(now, { asnLookup: async () => asnLookup });
@@ -429,8 +430,8 @@ describe('certificate availability versus expiry (issue 399)', () => {
       expect.objectContaining({ name: 'expired managed', expired: true, daysLeft: -1 }),
       expect.objectContaining({ name: 'today', expired: false, daysLeft: 0 }),
     ]);
-    expect(facts.certificates.attention).toHaveLength(5);
-    expect(facts.certificates.attention?.map((x) => x.state)).toEqual(['missing', 'pending', 'unknown', 'mismatch', 'unknown']);
+    expect(facts.certificates.attention).toHaveLength(6);
+    expect(facts.certificates.attention?.map((x) => x.state)).toEqual(['missing', 'pending', 'unknown', 'mismatch', 'unknown', 'renewal_overdue']);
     expect(JSON.stringify(facts.certificates.attention)).not.toContain('daysLeft');
   });
 });

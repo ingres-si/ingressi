@@ -380,15 +380,22 @@ async function collectCertificates(now: Date): Promise<DigestFacts["certificates
     const name = str(String(finding.facts.name ?? finding.facts.domain ?? ""), 120);
     const raw = finding.facts.expiresAt;
     const expiry = typeof raw === "string" && raw.trim() ? Date.parse(raw) : NaN;
-    const state = String(finding.facts.state ?? "unknown");
-    if (!Number.isFinite(expiry) || ["missing", "pending", "unknown", "mismatch"].includes(state) && finding.facts.state != null) {
+    const state = typeof finding.facts.state === "string" ? finding.facts.state : "unknown";
+    // No usable expiry, or a certificate that is not the one asked for: a
+    // finding about availability, never a countdown. Findings past the expiry
+    // window (a renewal that is overdue but not yet close to expiry) too.
+    if (
+      !Number.isFinite(expiry) ||
+      state === "missing" ||
+      state === "mismatch" ||
+      expiry > now.getTime() + DIGEST_CERT_DAYS * 24 * HOUR_MS
+    ) {
       attention.push({ kind, name, state, message: str(finding.message, 1000) });
       continue;
     }
     // The actual date is authoritative, including managed certificates whose
     // findings do not carry an `expired` flag. Null never becomes zero days.
     const daysLeft = Math.floor((expiry - now.getTime()) / (24 * HOUR_MS));
-    if (expiry > now.getTime() + DIGEST_CERT_DAYS * 24 * HOUR_MS) continue;
     expiring.push({ kind, name, expiresAt: new Date(expiry).toISOString(), daysLeft, expired: expiry <= now.getTime() });
   }
   expiring.sort((a, b) => a.expiresAt.localeCompare(b.expiresAt));
