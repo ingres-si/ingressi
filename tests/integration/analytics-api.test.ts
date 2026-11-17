@@ -309,7 +309,8 @@ describe('top, requests and security lists', () => {
       if (query.includes('uniq(client_ip) AS n')) return [{ n: '7' }];
       if (query.includes('GROUP BY client_ip')) return [{ client_ip: '198.51.100.7', country: 'NL', n: '30' }];
       if (query.includes('GROUP BY name')) return [{ name: 'app.example.com', n: '41' }];
-      if (query.includes('GROUP BY rule_id')) return [{ rule_id: '930130', message: 'Restricted file access attempt', n: '25' }];
+      if (query.includes('GROUP BY rule_id')) return [{ rule_id: '930130', n: '25' }];
+      if (query.includes('p_peak_rule')) return [{ message: 'Restricted file access attempt' }];
       return [];
     };
     const body = await (await getSeries(req('/api/v1/analytics/security/series?range=24h'))).json();
@@ -325,8 +326,34 @@ describe('top, requests and security lists', () => {
       },
     });
     const bucketCalls = ctx.calls.filter((call) => call.query_params.p_to === body.peak.ts + body.range.step);
-    expect(bucketCalls).toHaveLength(4);
+    expect(bucketCalls).toHaveLength(5);
+    for (const call of bucketCalls.filter((c) => !c.query.includes('p_peak_rule'))) {
+      expect(call.query).toContain('FROM traffic_events WHERE');
+      expect(call.query).not.toContain('UNION ALL');
+    }
     for (const call of bucketCalls) expect(call.query_params.p_from).toBe(body.peak.ts);
+  });
+});
+
+describe('peak population (issue 398)', () => {
+  it('excludes two DetectionOnly matches and uses one stopped access event for every attribution', async () => {
+    ctx.rows = (sql) => {
+      if (sql.includes('GROUP BY b, o')) return [{ b: 0, o: 'waf', c: 1 }];
+      if (sql.includes('AS requests')) return [{ requests: 3, mitigated: 1, previous: 0 }];
+      if (sql.includes('FROM waf_events') && !sql.includes('p_peak_rule')) throw new Error('wrong population');
+      if (sql.includes('uniq(client_ip)')) return [{ n: 1 }];
+      if (sql.includes('GROUP BY client_ip')) return [{ client_ip: '192.0.2.1', country: 'XX', n: 1 }];
+      if (sql.includes('GROUP BY name')) return [{ name: 'blocked.example', n: 1 }];
+      if (sql.includes('GROUP BY rule_id')) return [{ rule_id: 941100, n: 1 }];
+      if (sql.includes('p_peak_rule')) return [{ message: 'XSS' }];
+      return [];
+    };
+    const body = await (await getSeries(req('/api/v1/analytics/security/series?range=1h'))).json();
+    expect(body.status).toBe('ok');
+    expect(body.peak).toMatchObject({ value: 1, top: { addresses: 1, source: { count: 1 }, host: { count: 1 }, rule: { ruleId: 941100, count: 1 } } });
+    const rule = ctx.calls.find((c) => c.query.includes('waf_rule_id AS rule_id'))!;
+    expect(rule.query).toContain('waf_rule_id > 0');
+    expect(rule.query).toContain("= 'waf'");
   });
 });
 
