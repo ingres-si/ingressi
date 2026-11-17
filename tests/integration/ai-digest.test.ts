@@ -51,6 +51,7 @@ import { logAuditEvent } from '../../src/lib/audit';
 import { setSetting, getSetting } from '../../src/lib/settings';
 import { AI_SETTINGS_KEY } from '../../ee/ai/settings';
 import { createAlertChannel } from '../../ee/alerting/channels';
+import * as certEvaluators from '../../ee/alerting/evaluators';
 import { collectDigestFacts } from '../../ee/ai/digest-data';
 import { DIGEST_SYSTEM_PROMPT, buildDigestPrompt, runScheduledDigest } from '../../ee/ai/digest';
 import { DIGEST_SETTINGS_KEY, DIGEST_STATE_KEY } from '../../ee/ai/digest-settings';
@@ -194,7 +195,7 @@ describe('digest facts', () => {
     expect(facts.configChanges.total).toBe(1);
     expect(facts.configChanges.recent).toEqual([{ at: expect.any(String), actor: 'system', summary: 'Updated proxy host app' }]);
     expect(facts.alerts).toMatchObject({ fired: 1, resolved: 1, recent: [{ severity: 'warning', title: 'WAF blocked 150 requests' }] });
-    expect(facts.certificates).toEqual({ withinDays: 14, expiring: [] });
+    expect(facts.certificates).toEqual({ withinDays: 14, expiring: [], attention: [] });
   });
 
   it('includes what is available without ClickHouse and says so', async () => {
@@ -409,5 +410,27 @@ describe('scheduled digest', () => {
     await ctx.db.update(schema.alertChannels).set({ enabled: false });
     expect(await runScheduledDigest(new Date('2026-10-02T08:00:30.000Z'), { deliver })).toBe('no_channels');
     expect(deliver).not.toHaveBeenCalled();
+  });
+});
+
+
+describe('certificate availability versus expiry (issue 399)', () => {
+  it('keeps missing/pending/unknown/mismatch apart from real expiry today and expired dates', async () => {
+    const now = new Date('2026-11-17T12:00:00Z');
+    const rows = [
+      ...['missing', 'pending', 'unknown', 'mismatch'].map((state) => ({ state, expiresAt: null, daysLeft: null, domain: state + '.example' })),
+      { expiresAt: '2026-11-17T18:00:00Z', daysLeft: 0, name: 'today' },
+      { expiresAt: '2026-11-16T18:00:00Z', name: 'expired managed', state: 'expired' },
+      { expiresAt: 'invalid', name: 'invalid' },
+    ];
+    vi.spyOn(certEvaluators, 'evaluateCertExpiring').mockResolvedValue({ status: 'ok', findings: rows.map((facts) => ({ subjectKey: JSON.stringify(facts), label: 'Certificate', title: 'Certificate', message: 'Check certificate status', severity: 'warning', facts })) });
+    const facts = await collectDigestFacts(now, { asnLookup: async () => asnLookup });
+    expect(facts.certificates.expiring).toEqual([
+      expect.objectContaining({ name: 'expired managed', expired: true, daysLeft: -1 }),
+      expect.objectContaining({ name: 'today', expired: false, daysLeft: 0 }),
+    ]);
+    expect(facts.certificates.attention).toHaveLength(5);
+    expect(facts.certificates.attention?.map((x) => x.state)).toEqual(['missing', 'pending', 'unknown', 'mismatch', 'unknown']);
+    expect(JSON.stringify(facts.certificates.attention)).not.toContain('daysLeft');
   });
 });

@@ -130,6 +130,12 @@ export function digestSections(content: DigestContent): DigestSection[] {
       : ["None (ACME certificates are renewed by Caddy and are not listed)."],
   });
 
+  if (certs.attention?.length) sections.push({
+    heading: "Certificate availability and validation",
+    kind: "list",
+    lines: certs.attention.map((cert) => `${cert.kind} "${cert.name}": ${cert.state}. ${cert.message}`),
+  });
+
   const changes = facts.configChanges;
   sections.push({
     heading: `Configuration changes: ${fmt(changes.total)}`,
