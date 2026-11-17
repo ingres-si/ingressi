@@ -2,6 +2,16 @@
 
 Pull the new images and recreate the containers with `docker compose pull && docker compose up -d`. (`docker compose restart` does not re-read `.env`.)
 
+## Upgrading to v2.11.1
+
+- **WAF outcomes are matched to the exact request.** Analytics used to pair a WAF block with an access log line by client address, host, path and time, so in a quick burst to one path a successful request could be counted as the blocked one and the real block as served. Caddy now writes Coraza's transaction ID into the access log of WAF-protected hosts and analytics matches on it. Outcomes already stored are not rewritten.
+- **The security peak explains only stopped requests.** The top address, host and rule under a peak on the Security events page counted detection-only WAF matches too, so they could be larger than the peak itself. They now count the same blocked requests as the peak.
+- **The daily digest no longer lists a missing certificate as expiring in 0 days.** Certificates Caddy has not obtained, that do not match their domain or whose renewal is overdue are listed under **Certificate availability and validation**. A managed certificate that has expired shows its date.
+- **Analytics timestamps no longer shift when ClickHouse runs outside UTC.** Events are written as Unix timestamps, and new installs create the tables in UTC. Existing tables keep their column timezone, and events written before the upgrade are not moved; the default stack runs ClickHouse in UTC and was not affected. See [analytics.md](analytics.md#timestamp-contract-and-existing-partitions).
+- **Hetzner and DigitalOcean DNS-01 work again.** Hetzner uses the Cloud API (its old DNS API has shut down): enter a Hetzner Cloud API token. DigitalOcean credentials are sent under the field name its module reads; saved ones are converted.
+- **Dependency updates** (the production and development dependency groups).
+- No database migration.
+
 ## Upgrading to v2.11.0
 
 - **Trust client certificates by their certificate authority.** A proxy host's mTLS card has a new **Trust** switch: keep trusting individual roles and certificates, or trust a certificate authority and accept every client certificate it signs — an imported CA such as Cloudflare's origin pull CA, for example. The two modes are exclusive per host. REST: `ca_certificate_ids` in a host's mTLS settings. See [certificates.md](certificates.md#certificate-authorities).
