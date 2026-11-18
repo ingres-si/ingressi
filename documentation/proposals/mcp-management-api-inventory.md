@@ -6,7 +6,7 @@ Reviewed source: `4728b9e514c41383d073cb69cf0274f838b422b8` (`develop`,18Novembe
 
 ## Scope and method
 
-This is an exhaustive filename/export inventory of `app/api/v1/**/route.ts` at the reviewed revision: **246 route files,395 distinct exported HTTP handlers,55 first-level route groups**.147 files forward exports to enterprise modules. Neither a route file nor an HTTP handler is automatically an MCP tool. The RFC selects nine initial reads; all other rows remain subject to their documented later/human disposition.
+This is an exhaustive filename/export inventory of `app/api/v1/**/route.ts` at the reviewed revision: **246 route files, 395 distinct exported HTTP handlers,55 first-level route groups**.147 files forward exports to enterprise modules. Neither a route file nor an HTTP handler is automatically an MCP tool. The RFC selects nine initial reads; all other rows remain subject to their documented later/human disposition.
 
 The scan reads exported HTTP method names, resolves direct `@/ee/` re-exports where present, and collects literal `requireApiPermission`/`requirePermission` strings and named auth helpers from those files. The permission column is a **file-level hint, not a per-method authorization proof**: it can combine multiple methods, omit indirect/dynamic guards and does not describe all ownership, tag scope, field-level, edition or side-effect checks. An empty hint means manual review required, not an asserted vulnerability. The implementation must read each selected handler and service, verify OpenAPI/query/response contracts and execute authorization tests.
 

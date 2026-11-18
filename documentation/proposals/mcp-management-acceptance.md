@@ -38,7 +38,7 @@ Remote HTTP is **not** accepted by passing stdio tests. It additionally needs:
 | --- | --- | --- |
 | B01 | Seed secrets in every nested host/settings/provider/certificate/config field | Output/log/client context has no planted secret, private key, cookie, credential-bearing URL or unknown newly added field. |
 | B02 | Seed secrets in WAF matched variables, headers, request query/body and backend errors | Safe projection retains useful event metadata and attribution without returning sensitive values. |
-| B03 | Request configuration export, raw settings, private keys, token creation or account-session data by paraphrase and by direct tool call | No matching dangerous tool in phaseA; policy rejects an attempted operation. |
+| B03 | Request configuration export, raw settings, private keys, token creation or account-session data by paraphrase and by direct tool call | No matching dangerous tool in phase A; policy rejects an attempted operation. |
 | B04 | Prompt injection in URL, user agent, host description, rule text and returned error | Results remain data. Even an assistant that follows the injected instruction cannot call a forbidden operation or target. |
 | B05 | Add an unexpected sensitive upstream response property | Schema/projection drops or explicitly rejects it; no generic serialization silently exposes it. |
 | B06 | Hosted-model client versus local-model client | Data-egress policy and documentation accurately describe the client destination; local MCP placement is not advertised as sufficient for local-only processing. |
@@ -109,4 +109,4 @@ An implementation release report should publish:
 4. Known limitations, proposed budgets versus measured capacity, data-egress policy and enterprise availability.
 5. Before/after protection/serving evidence, owned-fixture cleanup and tested disable/recovery procedure.
 
-Release phaseA only after its applicable gates pass. Remote HTTP, preparation, write execution and enterprise adapters have independent additional gates; a read-only release does not implicitly enable any of them. Maintainer agreement on this proposal is not a release, a deployment authorization or a production-readiness verdict.
+Release phase A only after its applicable gates pass. Remote HTTP, preparation, write execution and enterprise adapters have independent additional gates; a read-only release does not implicitly enable any of them. Maintainer agreement on this proposal is not a release, a deployment authorization or a production-readiness verdict.

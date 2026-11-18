@@ -28,7 +28,7 @@ MCP supplies a tool interface, not an LLM or a guarantee that every natural-lang
 | [Access scope](../../src/lib/access-scope.ts) | Tag scoping applies to proxy hosts, L4 hosts and certificates. Analytics, WAF and several other areas are instance-wide. Adding a host filter is not a new authorization boundary. |
 | [Host models](../../src/lib/models/proxy-hosts.ts) | Successful host writes can apply Caddy configuration immediately. An MCP tool must never describe a live write as a draft. Rejected applies and stored-but-not-live failures need distinct handling. |
 | [Host preview](../../app/api/v1/proxy-hosts/preview/route.ts) and [update preview](../../app/api/v1/proxy-hosts/[id]/preview/route.ts) | Existing POST previews can describe field changes, impact and approval requirements without saving. They require `proxy_hosts:write`; a read-only token cannot call them by assumption. Preview is not a promise of successful deployment or business compatibility. |
-| [Change approvals](../../ee/docs/change-approvals.md) | Protected host changes may return HTTP202 pending approval. Approval policies, request fingerprints and windows must remain effective. Policies do not constitute universal approval coverage for every setting/API. |
+| [Change approvals](../../ee/docs/change-approvals.md) | Protected host changes may return HTTP 202 pending approval. Approval policies, request fingerprints and windows must remain effective. Policies do not constitute universal approval coverage for every setting/API. |
 | [Certificate serialization](../../src/lib/certificate-api.ts) | Ordinary certificate responses already exclude private keys. Preserve that allowlist and use a smaller metadata projection for MCP; never weaken existing serialization. |
 | [Configuration export](../../app/api/v1/config/export/route.ts) | Configuration export is secret-bearing. A read-like user request such as “show configuration” must not invoke it. |
 | [Project license](../../LICENSE) and [enterprise license](../../ee/LICENSE) | Core and enterprise code have different licenses. Do not relocate enterprise implementations or bypass feature/authorization gates through MCP. Keep licensed integrations separately reviewed. |
@@ -147,15 +147,15 @@ Suggested result envelope (illustrative, not a REST change):
 
 Do not invent evidence IDs unavailable from the backend. An adapter correlation ID is not a Caddy request ID or Coraza transaction ID. Label them separately. If the REST result lacks a supported total, version, timestamp or truncation signal, return unknown rather than fabricating it.
 
-Distinguish authentication failure, permission failure, out-of-scope/not-found, validation failure, pending approval, version conflict, unavailable backend, timeout, rejected configuration and uncertain write outcome. A202 is pending, not applied. A502 or timeout after a write may need readback and operator review; it is not proof that nothing changed. Return a sanitized error and correlation ID without stack traces, credentials or raw backend configuration.
+Distinguish authentication failure, permission failure, out-of-scope/not-found, validation failure, pending approval, version conflict, unavailable backend, timeout, rejected configuration and uncertain write outcome. HTTP 202 is pending, not applied. A502 or timeout after a write may need readback and operator review; it is not proof that nothing changed. Return a sanitized error and correlation ID without stack traces, credentials or raw backend configuration.
 
-Proposed conservative defaults for implementation benchmarking:100 rows per page, max500;24-hour detailed-request default range and7-day aggregate default, configurable hard bounds;1MiB maximum upstream response;4 concurrent upstream calls per adapter;10-second read timeout; no automatic mutation retry. These are proposed limits, not claims about current REST defaults or proven capacity. Exceeding the upstream size cap fails explicitly instead of implying a complete result. Bound parsed structures as well as byte size.
+Proposed conservative defaults for implementation benchmarking: 100 rows per page, max500; 24-hour detailed-request default range and7-day aggregate default, configurable hard bounds; 1MiB maximum upstream response; 4 concurrent upstream calls per adapter; 10-second read timeout; no automatic mutation retry. These are proposed limits, not claims about current REST defaults or proven capacity. Exceeding the upstream size cap fails explicitly instead of implying a complete result. Bound parsed structures as well as byte size.
 
 ## 7. Authentication, authorization and transport
 
 ### Local stdio first
 
-Use the official TypeScript SDK and supported APIs; lock exact reviewed versions in the implementation. As reviewed, the official SDK's stable v2 line implements MCP revision2026-07-28. Do not copy an old v1 import/transport example without verifying compatibility. Retain compatibility only for explicitly tested client/protocol pairs.
+Use the official TypeScript SDK and supported APIs; lock exact reviewed versions in the implementation. As reviewed, the official SDK's stable v2 line implements MCP revision 2026-07-28. Do not copy an old v1 import/transport example without verifying compatibility. Retain compatibility only for explicitly tested client/protocol pairs.
 
 The operator configures a fixed API origin and a dedicated scoped token out of band. Prefer a protected credential file/secret mount supported by the adapter; the standard stdio environment mechanism may also carry credential configuration, with inherited-process exposure documented. Never put credentials in tool arguments, prompts, generated client JSON, command-line arguments, checked-in files or logs. Do not reuse an interactive administrator password/session.
 
@@ -169,7 +169,7 @@ Remote access requires a separate accepted security design: TLS, exact Origin/Ho
 
 Do not pass a token issued for the MCP resource blindly to Ingressi or accept an Ingressi API token as proof of an arbitrary remote MCP identity. Use a documented trusted delegation/token-exchange or per-principal credential binding; never a shared administrator API token for all remote users. No implicit OAuth authorization server is provided by Ingressi's ordinary scoped API-token system.
 
-MCP revision2026-07-28 removed protocol-level sessions and the GET event-stream endpoint. Authenticate each HTTP request, follow the current metadata/header requirements and reject unsupported revisions. A legacy adapter, if implemented, needs explicit separate tests. Do not treat a connection ID, clientInfo string, plan ID or legacy session ID as authentication.
+MCP revision 2026-07-28 removed protocol-level sessions and the GET event-stream endpoint. Authenticate each HTTP request, follow the current metadata/header requirements and reject unsupported revisions. A legacy adapter, if implemented, needs explicit separate tests. Do not treat a connection ID, clientInfo string, plan ID or legacy session ID as authentication.
 
 ## 8. Safe future change lifecycle
 
@@ -209,11 +209,11 @@ Trust boundaries are operator/client, untrusted model output, the adapter, upstr
 | DNS rebinding / browser drive-by / local process compromise | Exact remote Origin/Host policy, loopback local HTTP, authentication; rootless stdio/container, limited mounts and no privileged sockets. |
 | Read query denial of service | Explicit range/row/byte/concurrency/time budgets, cancellation where supported, expensive query opt-ins and backpressure. Measure Caddy/dashboard/analytics under failure and load. |
 | Lost update / duplicate mutation / replay | Trusted approval binding, backend atomic preconditions, principal-bound expiring plans, operation journal and demonstrated idempotency. Block execution when these are missing. |
-| Accidental control weakening / benign traffic block | Existing WAF/geo/rate/allowlist policies unchanged in phaseA. Future control changes require false-positive fixtures, shared-IP tests and clear scope/expiry. |
+| Accidental control weakening / benign traffic block | Existing WAF/geo/rate/allowlist policies unchanged in phase A. Future control changes require false-positive fixtures, shared-IP tests and clear scope/expiry. |
 | Supply-chain compromise | Lock reviewed SDK/runtime dependencies, license/SBOM/provenance and vulnerability review, signed/pinned optional images; never install an unpinned package automatically from tool output. |
 | Audit or response-cache leakage | Per-principal access and safe cache partitioning; sensitive data no shared/public cache; bounded metadata-only audit, no token/argument dumps. Test revocation and cross-user cache behavior. |
 
-SSRF restrictions must also cover future operations whose legitimate purpose contacts configured destinations (AI tests, alert/audit sinks, LDAP, HA storage, backup targets and upstream probes). A typed tool is not by itself an SSRF defense. Keep these operations outside phaseA.
+SSRF restrictions must also cover future operations whose legitimate purpose contacts configured destinations (AI tests, alert/audit sinks, LDAP, HA storage, backup targets and upstream probes). A typed tool is not by itself an SSRF defense. Keep these operations outside phase A.
 
 Untrusted content marking reduces ambiguity but does not solve prompt injection. Security must remain valid even if the assistant obeys an injected instruction and directly calls a forbidden tool.
 
@@ -222,7 +222,7 @@ Untrusted content marking reduces ambiguity but does not solve prompt injection.
 Prefer deterministic REST analytics over a second LLM for factual counts. Every answer should preserve its exact time range, timezone, filters, denominator, truncation/retention limits, outcome semantics and evidence provenance.
 
 - WAF-only counts must use explicit WAF semantics. All mitigations can include non-WAF controls; do not relabel the aggregate.
-- DetectionOnly matches are not blocked requests. Upstream4xx/5xx are not automatically WAF decisions.
+- DetectionOnly matches are not blocked requests. Upstream 4xx/5xx are not automatically WAF decisions.
 - Per-request attribution requires the correct source IDs. Matching aggregate totals alone do not establish correct request labels.
 - Distinguish rule-group totals, missing/unassigned IDs, excluded rows, deduplication and unique requests. Do not invent a rule for an unassigned request.
 - Preserve UTC/epoch units and convert only for display. State whether a range is inclusive/exclusive according to the actual API; never silently reinterpret it.
@@ -232,7 +232,7 @@ Prefer deterministic REST analytics over a second LLM for factual counts. Every 
 
 An optional AI question tool must disclose the configured provider/data policy and return the executed structured query alongside its answer. Unsupported compound questions should be decomposed into bounded queries or explained as unsupported. No automatic security action follows an AI interpretation or tuning suggestion.
 
-The MCP adapter does not send data to an LLM on its own in phaseA. However, the MCP client can send returned data to its selected cloud provider. “Local server” is not a guarantee of local-only data processing. Document that distinction and minimize data before returning it.
+The MCP adapter does not send data to an LLM on its own in phase A. However, the MCP client can send returned data to its selected cloud provider. “Local server” is not a guarantee of local-only data processing. Document that distinction and minimize data before returning it.
 
 ## 12. Observability, privacy and audit
 
@@ -309,7 +309,7 @@ The protected adapter config would name the API origin, token-file location, sel
 
 | Premortem: “the integration failed because…” | Early signal | Planned prevention / stop rule |
 | --- | --- | --- |
-| A benign user was blocked after an AI suggestion | Spike in failures for shared IPs or legitimate workflows | No remediation in phaseA; future scoped proposals and independent benign-traffic acceptance, with expiry/recovery evidence. |
+| A benign user was blocked after an AI suggestion | Spike in failures for shared IPs or legitimate workflows | No remediation in phase A; future scoped proposals and independent benign-traffic acceptance, with expiry/recovery evidence. |
 | Sensitive traffic or keys reached a model/provider | Secret-like fields in outputs, logs or client context | Allowlisted DTOs, planted-secret negative tests, explicit data-egress policy; disable affected tool and revoke its credential. |
 | A host update was applied to the wrong instance | Result target differs from prepared/approved alias | Immutable trusted instance binding, no inferred/fan-out writes, bound approval and exact-target readback. |
 | A concurrent dashboard edit was lost | Fingerprint/version differs | Backend atomic preconditions; stop instead of silently overwriting. No claims based only on sidecar serialization. |
@@ -331,15 +331,15 @@ Requested maintainer decisions:
 2. Separate package/repository or in-tree `mcp/`? Local stdio first, with remote OAuth deferred?
 3. Are the nine initial reads and safe output projections an acceptable first implementation boundary?
 4. Which instance-wide datasets and enterprise surfaces should be available, and under which explicit authorization/licensing conditions?
-5. Should phaseB use native host previews as proposed, and which backend CAS/idempotency/approval primitives are required before any general MCP write execution?
+5. Should phase B use native host previews as proposed, and which backend CAS/idempotency/approval primitives are required before any general MCP write execution?
 6. What supported runtimes/clients, resource budgets, CI contracts and artifact/provenance policy should be required?
 
 Acceptance of this RFC means agreement on direction and constraints. It does not mean MCP is implemented, that a package exists, that clients have been certified, or that any instance should be upgraded or exposed.
 
 ## 18. Primary references
 
-- [MCP authorization, revision2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization): distinguish stdio credentials from HTTP authorization, resource metadata and token audiences.
-- [MCP Streamable HTTP, revision2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http): per-request transport, Origin validation and removed protocol sessions/GET stream.
+- [MCP authorization, revision 2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28/basic/authorization): distinguish stdio credentials from HTTP authorization, resource metadata and token audiences.
+- [MCP Streamable HTTP, revision 2026-07-28](https://modelcontextprotocol.io/specification/2026-07-28/basic/transports/streamable-http): per-request transport, Origin validation and removed protocol sessions/GET stream.
 - [MCP tools](https://modelcontextprotocol.io/specification/2026-07-28/server/tools): discovery, schemas and model-driven invocation. Tool metadata is not an authorization boundary.
 - [Official MCP security guidance](https://modelcontextprotocol.io/docs/2026-07-28/tutorials/security/security_best_practices): confused deputies, token passthrough, SSRF, local server compromise and scope minimization.
 - [Official TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk) and [v2 documentation](https://ts.sdk.modelcontextprotocol.io/v2/): current supported SDK and transport APIs; recheck exact release/advisories at implementation time.
