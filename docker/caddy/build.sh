@@ -48,6 +48,11 @@ github.com/corazawaf/coraza-caddy/v2
 github.com/pberkel/caddy-storage-redis
 MODULES
 
+# xcaddy resolves plugins in a new module, so transitive security pins in this
+# go.mod must also be passed to its generated build, not only downloaded here.
+compress_version="$(module_version github.com/klauspost/compress)"
+set -- "$@" --replace "github.com/klauspost/compress=github.com/klauspost/compress@$compress_version"
+
 # Set by update-compatibility-pins.sh only while Caddy imports github.com/google/cel-go.
 cel_go_version="$(go list -m -f '{{if .Replace}}{{.Replace.Version}}{{end}}' github.com/google/cel-go 2>/dev/null || true)"
 if [ -n "$cel_go_version" ]; then

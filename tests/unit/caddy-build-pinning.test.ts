@@ -1,5 +1,7 @@
-import { readFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 
 const root = process.cwd();
@@ -68,5 +70,73 @@ describe("reproducible Caddy build", () => {
     expect(compatibilityWorkflow).toContain("sh docker/caddy/update-compatibility-pins.sh");
     expect(compatibilityWorkflow).toContain("docker compose build caddy");
     expect(compatibilityWorkflow).toContain("gh pr create");
+  });
+});
+
+describe.skipIf(process.platform === "win32")("xcaddy transitive security pin", () => {
+  function runBuild(compress: string, cel = "") {
+    const dir = mkdtempSync(join(tmpdir(), "ingressi-caddy-build-"));
+    const capture = join(dir, "xcaddy.json");
+    try {
+      // Run the real build script, but capture the external build command.
+      // No Go download, Docker access or /usr/bin/caddy write occurs here.
+      writeFileSync(join(dir, "go"), `#!/bin/sh
+case "$5" in
+  github.com/klauspost/compress) printf '%s\\n' "$TEST_COMPRESS_VERSION" ;;
+  github.com/google/cel-go) printf '%s\\n' "$TEST_CEL_VERSION" ;;
+  github.com/caddyserver/caddy/v2) printf '%s\\n' 'v2.11.9' ;;
+  *) printf '%s\\n' 'v0.1.0' ;;
+esac
+`);
+      writeFileSync(join(dir, "xcaddy"), `#!${process.execPath}
+require("node:fs").writeFileSync(process.env.XCADDY_CAPTURE, JSON.stringify({
+  args: process.argv.slice(2), goos: process.env.GOOS, goarch: process.env.GOARCH
+}));
+`);
+      chmodSync(join(dir, "go"), 0o700);
+      chmodSync(join(dir, "xcaddy"), 0o700);
+      const result = spawnSync("sh", [join(root, "docker/caddy/build.sh")], {
+        cwd: dir,
+        encoding: "utf8",
+        env: {
+          ...process.env, PATH: `${dir}:${process.env.PATH}`,
+          TEST_COMPRESS_VERSION: compress, TEST_CEL_VERSION: cel,
+          XCADDY_CAPTURE: capture, TARGETOS: "linux", TARGETARCH: "amd64",
+        },
+      });
+      const command = existsSync(capture)
+        ? JSON.parse(readFileSync(capture, "utf8")) as { args: string[]; goos: string; goarch: string }
+        : null;
+      return { result, command };
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  }
+
+  it("carries the resolved compression version into xcaddy's separate module", () => {
+    const { result, command } = runBuild("v1.20.2");
+    expect(result.status, result.stderr).toBe(0);
+    expect(command?.args.slice(0, 2)).toEqual(["build", "v2.11.9"]);
+    expect(command?.args.filter((_, i, args) => args[i - 1] === "--replace")).toEqual([
+      "github.com/klauspost/compress=github.com/klauspost/compress@v1.20.2",
+    ]);
+    expect(command?.goos).toBe("linux");
+    expect(command?.goarch).toBe("amd64");
+  });
+
+  it("follows a newer resolved version while preserving a legacy cel replacement", () => {
+    const { result, command } = runBuild("v1.20.3", "v0.26.0");
+    expect(result.status, result.stderr).toBe(0);
+    expect(command?.args.filter((_, i, args) => args[i - 1] === "--replace")).toEqual([
+      "github.com/klauspost/compress=github.com/klauspost/compress@v1.20.3",
+      "github.com/google/cel-go=github.com/google/cel-go@v0.26.0",
+    ]);
+  });
+
+  it("refuses to build when the compression security pin cannot be resolved", () => {
+    const { result, command } = runBuild("");
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain("No pinned version found for github.com/klauspost/compress");
+    expect(command).toBeNull();
   });
 });
