@@ -169,7 +169,10 @@ export const QUESTIONS_OPENAPI_SCHEMAS = {
         enum: [...QUESTION_BREAKDOWNS],
         description: 'none: one total; time: over time; a dimension: its values ranked. bytes allows none, time and host; visitors none and time.',
       },
-      filters: { type: "array", maxItems: MAX_QUESTION_FILTERS, items: ref("AnalyticsQuestionFilter") },
+      filters: {
+        type: "array", maxItems: MAX_QUESTION_FILTERS, items: ref("AnalyticsQuestionFilter"),
+        description: "A waf_rule breakdown is WAF-only: outcome is waf is added when absent, including for older saved questions. Conflicting outcomes are refused; the added filter counts toward the limit.",
+      },
       hostTags: {
         type: "array",
         maxItems: MAX_QUESTION_TAGS,

@@ -187,6 +187,29 @@ export function breakdownAllowed(metric: QuestionMetric, breakdown: QuestionBrea
 }
 
 /**
+ * A WAF rule ranks WAF interruptions, not everything a security control
+ * stopped. Bind that scope before totals, shares, comparisons and summaries
+ * are computed. Saved questions pass here too, so old unscoped queries get
+ * the same correction without a data migration.
+ *
+ * Several positive filters on one dimension are ORed by the analytics API.
+ * Never append WAF to an explicitly different outcome: that would broaden
+ * the question instead of restricting it.
+ */
+function scopeWafRules(breakdown: QuestionBreakdown, filters: QuestionFilter[]): QuestionFilter[] {
+  if (breakdown !== "waf_rule") return filters;
+  const outcomes = filters.filter((filter) => filter.dim === "outcome");
+  if (outcomes.some((filter) => filter.op === "is" ? filter.value !== "waf" : filter.value === "waf")) {
+    throw new ApiValidationError("A WAF rule breakdown describes WAF-blocked requests only; use an outcome breakdown for other controls");
+  }
+  if (outcomes.some((filter) => filter.op === "is" && filter.value === "waf")) return filters;
+  if (filters.length >= MAX_QUESTION_FILTERS) {
+    throw new ApiValidationError(`A WAF rule breakdown needs its WAF outcome filter; use at most ${MAX_QUESTION_FILTERS - 1} other filters`);
+  }
+  return [...filters, { dim: "outcome", op: "is", value: "waf" }];
+}
+
+/**
  * Validates a structured query (throws ApiValidationError). metric,
  * breakdown and range are required; filters, hostTags, comparison and limit
  * default to none, none, "none" and 10.
@@ -210,7 +233,7 @@ export function parseQuestionQuery(input: unknown): QuestionQuery {
   return {
     metric,
     breakdown,
-    filters: parseFilters(record.filters),
+    filters: scopeWafRules(breakdown, parseFilters(record.filters)),
     hostTags: parseTags(record.hostTags),
     range: parseRange(record.range),
     comparison,
