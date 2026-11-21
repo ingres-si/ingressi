@@ -54,4 +54,10 @@ if [ -n "$cel_go_version" ]; then
   set -- "$@" --replace "github.com/google/cel-go=github.com/google/cel-go@$cel_go_version"
 fi
 
+# xcaddy resolves plugins in a new module, so transitive security pins in this
+# go.mod must also be passed to its generated build, not only downloaded here
+# (verified: without this, the built binary still embeds the old version).
+compress_version="$(module_version github.com/klauspost/compress)"
+set -- "$@" --replace "github.com/klauspost/compress=github.com/klauspost/compress@$compress_version"
+
 GOOS="$TARGETOS" GOARCH="$TARGETARCH" xcaddy build "$@" --output /usr/bin/caddy
