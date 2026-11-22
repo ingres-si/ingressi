@@ -84,7 +84,12 @@ export type RegisteredClient = {
  * stored MCP grants; clients re-authorize.
  */
 export function hashStoredSecret(value: string): string {
-  return createHmac("sha256", config.sessionSecret).update(value).digest("hex");
+  // Not a password: every value hashed here comes from randomBytes() (a
+  // 256-bit access token, refresh token, authorization code or client
+  // secret), so a slow KDF would only add latency to every request. HMAC with
+  // SESSION_SECRET is stronger than a plain digest: a database copy alone
+  // cannot test candidate values offline.
+  return createHmac("sha256", config.sessionSecret).update(value).digest("hex"); // codeql[js/insufficient-password-hash] false positive: 256-bit random tokens/client secrets, not user passwords; HMAC keyed with SESSION_SECRET
 }
 
 /** Constant-time comparison of two hex digests. */
