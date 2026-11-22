@@ -171,6 +171,32 @@ beforeEach(async () => {
 });
 
 describe('asking', () => {
+  it('uses WAF-only totals and denominators for rule rankings and their comparisons', async () => {
+    ctx.rows = (sql) => {
+      // Four WAF interruptions, three with an identified rule; other controls
+      // are outside this population. The native regression also executes a
+      // mixed fixture against ClickHouse rather than this transport stub.
+      if (sql.includes('count() AS total')) return [{ total: 4, d0: 2 }];
+      if (sql.includes(' AS value')) return [{ value: '941100', c: 3, m: 3 }];
+      return [];
+    };
+    ctx.replies = [answerQuery({ breakdown: 'waf_rule', comparison: 'previous_period', hostTags: ['shop'] }), 'Three of four WAF interruptions have rule 941100.'];
+    const { status, body } = await askQ('Which WAF rules blocked the most requests, compared with the previous week?');
+    expect(status).toBe(200);
+    expect(body.query.filters).toEqual([{ dim: 'outcome', op: 'is', value: 'waf' }]);
+    expect(body.result).toMatchObject({ total: 4, previousTotal: 4, rows: [{ value: '941100', count: 3, share: 0.75 }] });
+    for (const call of trafficCalls()) {
+      const binding = Object.entries(call.query_params).find(([, value]) => value === 'waf');
+      expect(binding).toBeDefined();
+      expect(call.query).toContain(`{${binding![0]}:String}`);
+      expect(call.query_params.p_scope).toEqual(['admin.example.org', 'shop.example.com', 'shop.example.com:443']);
+    }
+    expect(ctx.modelCalls[1].prompt.user).toContain('"total": 4');
+    expect(ctx.modelCalls[1].prompt.user).toContain('WAF');
+    const href = new URL(body.analyticsHref, 'http://localhost');
+    expect(JSON.parse(href.searchParams.get('filters')!)).toContainEqual({ dim: 'outcome', op: 'is', value: 'waf' });
+  });
+
   it('turns the question into a validated query, runs it with bound parameters and audits it', async () => {
     ctx.replies = [answerQuery({ hostTags: ['shop'] }), 'Germany sent most of the blocked requests.'];
     const { status, body } = await askQ('Which countries were blocked most last week on the shop hosts?');
@@ -439,6 +465,26 @@ describe('saved questions', () => {
     const response = await createSaved(req('/api/v1/analytics/questions/saved', { method: 'POST', body }));
     return { status: response.status, body: await response.json() };
   }
+
+  it('revalidates an older unscoped WAF rule question before listing and running it', async () => {
+    const now = new Date().toISOString();
+    const [legacy] = await ctx.db.insert(schema.analyticsQuestions).values({
+      userId: 1, question: 'Which WAF rules blocked the most requests?',
+      query: JSON.stringify(query({ breakdown: 'waf_rule' })), shared: false,
+      createdAt: now, updatedAt: now,
+    }).returning();
+    const listed = await (await listSaved(req('/api/v1/analytics/questions/saved'))).json();
+    expect(listed[0].query.filters).toEqual([{ dim: 'outcome', op: 'is', value: 'waf' }]);
+    ctx.replies = ['WAF-only result.'];
+    const response = await runSaved(req('/x', { method: 'POST' }), id(legacy.id));
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.query.filters).toEqual([{ dim: 'outcome', op: 'is', value: 'waf' }]);
+    for (const call of trafficCalls()) expect(Object.values(call.query_params)).toContain('waf');
+    // The persisted row is not rewritten, and no interpretation call was needed.
+    expect(ctx.modelCalls).toHaveLength(1);
+    expect((await ctx.db.select().from(schema.analyticsQuestions))[0].query).toBe(legacy.query);
+  });
 
   it('saves the validated query, shares it and re-runs it without the interpretation call', async () => {
     const created = await save({ question: 'Which countries were blocked most?', query: query(), shared: true });

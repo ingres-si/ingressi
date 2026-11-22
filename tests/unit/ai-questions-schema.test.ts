@@ -35,6 +35,33 @@ function refuses(input: unknown, message?: RegExp) {
 }
 
 describe('parseQuestionQuery', () => {
+  it('scopes a WAF rule breakdown to WAF interruptions, including older saved queries', () => {
+    for (const metric of ['requests', 'mitigated', 'errors']) {
+      const parsed = parseQuestionQuery({ metric, breakdown: 'waf_rule', range: { preset: '7d' } });
+      expect(parsed.filters).toEqual([{ dim: 'outcome', op: 'is', value: 'waf' }]);
+      expect(parseQuestionQuery(parsed)).toEqual(parsed);
+    }
+    // A breakdown by country still counts mitigations from every control.
+    expect(parseQuestionQuery({ metric: 'mitigated', breakdown: 'country', range: { preset: '7d' } }).filters).toEqual([]);
+  });
+
+  it('does not broaden a conflicting outcome into an OR when adding WAF scope', () => {
+    for (const filters of [
+      [{ dim: 'outcome', op: 'is', value: 'geo' }],
+      [{ dim: 'outcome', op: 'is_not', value: 'waf' }],
+      [{ dim: 'outcome', op: 'is', value: 'waf' }, { dim: 'outcome', op: 'is', value: 'rate_limit' }],
+    ]) refuses({ metric: 'mitigated', breakdown: 'waf_rule', range: { preset: '7d' }, filters }, /WAF rule breakdown/);
+    const country = { dim: 'country', op: 'is', value: 'US' };
+    const parsed = parseQuestionQuery({ metric: 'mitigated', breakdown: 'waf_rule', range: { preset: '7d' }, filters: [country, { dim: 'outcome', op: 'is_not', value: 'served' }] });
+    expect(parsed.filters).toEqual([country, { dim: 'outcome', op: 'is_not', value: 'served' }, { dim: 'outcome', op: 'is', value: 'waf' }]);
+  });
+
+  it('retains the filter budget when adding the required WAF scope', () => {
+    const filters = Array.from({ length: 10 }, (_, i) => ({ dim: 'host', op: 'is', value: `host${i}.example.com` }));
+    refuses({ metric: 'requests', breakdown: 'waf_rule', range: { preset: '7d' }, filters }, /WAF rule breakdown/);
+    expect(parseQuestionQuery({ metric: 'requests', breakdown: 'waf_rule', range: { preset: '7d' }, filters: filters.slice(1) }).filters).toHaveLength(10);
+  });
+
   it('accepts a query on the allow-lists and normalises it', () => {
     expect(parseQuestionQuery(VALID)).toEqual({
       metric: 'mitigated',

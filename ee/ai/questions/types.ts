@@ -31,7 +31,8 @@ export const QUESTION_DIMENSIONS = [
 ] as const;
 export type QuestionDimension = (typeof QUESTION_DIMENSIONS)[number];
 
-/** "none": one total; "time": the metric over time; a dimension: its values ranked. */
+/** "none": one total; "time": the metric over time; a dimension: its values ranked.
+ * "waf_rule" is scoped to WAF-blocked requests, including the total and shares. */
 export const QUESTION_BREAKDOWNS = ["none", "time", ...QUESTION_DIMENSIONS] as const;
 export type QuestionBreakdown = (typeof QUESTION_BREAKDOWNS)[number];
 
