@@ -89,7 +89,8 @@ export function hashStoredSecret(value: string): string {
   // secret), so a slow KDF would only add latency to every request. HMAC with
   // SESSION_SECRET is stronger than a plain digest: a database copy alone
   // cannot test candidate values offline.
-  return createHmac("sha256", config.sessionSecret).update(value).digest("hex"); // codeql[js/insufficient-password-hash] false positive: 256-bit random tokens/client secrets, not user passwords; HMAC keyed with SESSION_SECRET
+  // codeql[js/insufficient-password-hash]
+  return createHmac("sha256", config.sessionSecret).update(value).digest("hex");
 }
 
 /** Constant-time comparison of two hex digests. */
