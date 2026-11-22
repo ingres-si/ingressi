@@ -19,9 +19,10 @@
  *  - Tokens are bound to the canonical MCP resource (config.ts), and only
  *    hashes are stored at rest.
  */
-import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { and, count, desc, eq, gt, isNotNull, isNull, lt, or } from "drizzle-orm";
 import { appDb, nowIso } from "../db";
+import { config } from "../config";
 import { mcpOAuthClients, mcpOAuthCodes, mcpOAuthConsents, mcpOAuthTokens, users } from "../db/schema";
 import { logAuditEvent } from "../audit";
 import { first } from "../db/ops";
@@ -74,8 +75,16 @@ export type RegisteredClient = {
   createdAt: string;
 };
 
-function hash(value: string): string {
-  return createHash("sha256").update(value).digest("hex");
+/**
+ * The digest stored at rest for a client secret, authorization code, access
+ * token or refresh token. These are 256-bit random values generated here, not
+ * user-chosen passwords: a fast keyed digest is the right storage function,
+ * and HMAC with SESSION_SECRET means a database dump alone does not let anyone
+ * test candidate values offline. Rotating SESSION_SECRET invalidates the
+ * stored MCP grants; clients re-authorize.
+ */
+export function hashStoredSecret(value: string): string {
+  return createHmac("sha256", config.sessionSecret).update(value).digest("hex");
 }
 
 /** Constant-time comparison of two hex digests. */
@@ -291,7 +300,7 @@ export async function registerClient(input: ClientRegistrationInput): Promise<Re
   const now = nowIso();
   await appDb.insert(mcpOAuthClients).values({
     clientId,
-    clientSecretHash: clientSecret ? hash(clientSecret) : null,
+    clientSecretHash: clientSecret ? hashStoredSecret(clientSecret) : null,
     name: readName(input.client_name, "MCP client"),
     redirectUris: JSON.stringify(redirectUris),
     grantTypes: JSON.stringify([...grantTypes]),
@@ -344,7 +353,7 @@ export async function requireActiveClient(clientId: string): Promise<StoredClien
 /** Checks the client's secret for the token and revocation endpoints. */
 export function authenticateClientSecret(client: StoredClient, secret: string | null): void {
   if (client.tokenEndpointAuthMethod === "none") return;
-  if (!secret || !client.clientSecretHash || !sameDigest(hash(secret), client.clientSecretHash)) {
+  if (!secret || !client.clientSecretHash || !sameDigest(hashStoredSecret(secret), client.clientSecretHash)) {
     throw new OAuthError("invalid_client", "Client authentication failed", 401, {
       "WWW-Authenticate": 'Basic realm="ingressi-mcp", error="invalid_client"',
     });
@@ -406,7 +415,7 @@ export async function createAuthorizationCode(input: AuthorizationCodeInput): Pr
   const code = randomToken("mcp_ac_", 32);
   const now = new Date();
   await appDb.insert(mcpOAuthCodes).values({
-    codeHash: hash(code),
+    codeHash: hashStoredSecret(code),
     clientId: input.clientId,
     userId: input.userId,
     redirectUri: input.redirectUri,
@@ -451,7 +460,7 @@ export async function exchangeAuthorizationCode(input: CodeExchangeInput): Promi
   const row = await first(appDb
     .select()
     .from(mcpOAuthCodes)
-    .where(eq(mcpOAuthCodes.codeHash, hash(input.code)))
+    .where(eq(mcpOAuthCodes.codeHash, hashStoredSecret(input.code)))
     .limit(1));
   if (!row) throw new OAuthError("invalid_grant", "Unknown authorization code");
   if (row.clientId !== input.client.clientId) {
@@ -507,8 +516,8 @@ async function insertTokenPair(input: {
     .set({ lastUsedAt: input.now.toISOString() })
     .where(eq(mcpOAuthClients.clientId, input.clientId));
   await appDb.insert(mcpOAuthTokens).values({
-    accessTokenHash: hash(accessToken),
-    refreshTokenHash: hash(refreshToken),
+    accessTokenHash: hashStoredSecret(accessToken),
+    refreshTokenHash: hashStoredSecret(refreshToken),
     clientId: input.clientId,
     userId: input.userId,
     scopes: scopeString(input.scopes),
@@ -552,7 +561,7 @@ export async function rotateRefreshToken(input: RefreshInput): Promise<IssuedTok
   const row = await first(appDb
     .select()
     .from(mcpOAuthTokens)
-    .where(eq(mcpOAuthTokens.refreshTokenHash, hash(input.refreshToken)))
+    .where(eq(mcpOAuthTokens.refreshTokenHash, hashStoredSecret(input.refreshToken)))
     .limit(1));
   if (!row) throw new OAuthError("invalid_grant", "Unknown refresh token");
   if (row.clientId !== input.client.clientId) throw new OAuthError("invalid_grant", "The refresh token belongs to another client");
@@ -633,7 +642,7 @@ export async function validateAccessToken(raw: string): Promise<ValidatedAccessT
   const row = await first(appDb
     .select()
     .from(mcpOAuthTokens)
-    .where(eq(mcpOAuthTokens.accessTokenHash, hash(raw)))
+    .where(eq(mcpOAuthTokens.accessTokenHash, hashStoredSecret(raw)))
     .limit(1));
   if (!row || row.revokedAt) return null;
   if (!isFuture(row.accessExpiresAt)) return null;
@@ -666,7 +675,7 @@ export async function validateAccessToken(raw: string): Promise<ValidatedAccessT
  * either way); a token issued to another client is refused.
  */
 export async function revokeToken(raw: string, clientId: string, actorUserId: number | null): Promise<void> {
-  const tokenHash = hash(raw);
+  const tokenHash = hashStoredSecret(raw);
   const row = await first(appDb
     .select()
     .from(mcpOAuthTokens)

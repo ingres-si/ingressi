@@ -36,6 +36,7 @@ import { POST as revoke } from "../../app/api/oauth/revoke/route";
 import {
   exchangeAuthorizationCode,
   getClient,
+  hashStoredSecret,
   issueTokensForGrant,
   listClients,
   listConnections,
@@ -563,7 +564,7 @@ describe("authorization code and tokens", () => {
       scopes: ["mcp.read"],
       resource: mcpResourceUrl(),
     });
-    const hash = createHash("sha256").update(tokens.accessToken).digest("hex");
+    const hash = hashStoredSecret(tokens.accessToken);
     await ctx.db
       .update(schema.mcpOAuthTokens)
       .set({ accessExpiresAt: new Date(Date.now() - 1000).toISOString() })
