@@ -19,7 +19,7 @@
  *  - Tokens are bound to the canonical MCP resource (config.ts), and only
  *    hashes are stored at rest.
  */
-import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
+import { createHash, pbkdf2Sync, randomBytes, timingSafeEqual } from "node:crypto";
 import { and, count, desc, eq, gt, isNotNull, isNull, lt, or } from "drizzle-orm";
 import { appDb, nowIso } from "../db";
 import { config } from "../config";
@@ -77,20 +77,14 @@ export type RegisteredClient = {
 
 /**
  * The digest stored at rest for a client secret, authorization code, access
- * token or refresh token. These are 256-bit random values generated here, not
- * user-chosen passwords: a fast keyed digest is the right storage function,
- * and HMAC with SESSION_SECRET means a database dump alone does not let anyone
- * test candidate values offline. Rotating SESSION_SECRET invalidates the
- * stored MCP grants; clients re-authorize.
+ * token or refresh token: PBKDF2-HMAC-SHA-256, keyed by SESSION_SECRET. The
+ * values are 256-bit random tokens generated here, not user-chosen passwords,
+ * but a database copy alone must still not let anyone test candidates
+ * offline; SESSION_SECRET is the key that makes that impossible. Rotating
+ * SESSION_SECRET invalidates the stored MCP grants; clients re-authorize.
  */
 export function hashStoredSecret(value: string): string {
-  // Not a password: every value hashed here comes from randomBytes() (a
-  // 256-bit access token, refresh token, authorization code or client
-  // secret), so a slow KDF would only add latency to every request. HMAC with
-  // SESSION_SECRET is stronger than a plain digest: a database copy alone
-  // cannot test candidate values offline.
-  // codeql[js/insufficient-password-hash]
-  return createHmac("sha256", config.sessionSecret).update(value).digest("hex");
+  return pbkdf2Sync(value, config.sessionSecret, 10_000, 32, "sha256").toString("hex");
 }
 
 /** Constant-time comparison of two hex digests. */

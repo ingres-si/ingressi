@@ -89,7 +89,7 @@ Prompts are ready-made instructions: `review_proxy_host`, `triage_security_event
 - **Redirect URIs are matched exactly**, except that a loopback redirect may use another port (RFC 8252). Registration accepts HTTPS or loopback HTTP only.
 - **The Origin header is checked** on every request, which stops a web page on another origin from reaching a locally reachable instance (DNS rebinding).
 - **Discovery fetches nothing.** Client ID Metadata Documents are not supported, so a client-supplied URL never becomes a request from the instance; dynamic registration is the mechanism offered instead.
-- **Stored secrets are hashed with HMAC-SHA-256 keyed by `SESSION_SECRET`.** The values are 256-bit random tokens and client secrets, not user passwords; the keyed digest means a database copy alone does not allow offline testing. Rotating `SESSION_SECRET` invalidates existing MCP grants, and clients re-authorize.
+- **Stored secrets are hashed with PBKDF2-HMAC-SHA-256 keyed by `SESSION_SECRET`.** The values are 256-bit random tokens and client secrets, not user passwords; the keyed, deliberately slow digest means a database copy alone does not allow offline testing. Rotating `SESSION_SECRET` invalidates existing MCP grants, and clients re-authorize.
 - **Everything is audited**: client registration, consent granted or denied, revocation, and the changes the tools make through the normal models.
 - **Turning the server off** (Settings → MCP server) makes the endpoint, discovery and OAuth endpoints answer `404`. Existing grants are kept and work again when it is turned back on; revoke them to end them.
 
