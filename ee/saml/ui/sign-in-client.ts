@@ -5,13 +5,13 @@
  * SAML sign-in (ee/saml): POST /api/auth/sign-in/saml stores the request and
  * a binding cookie, then the browser goes to the identity provider.
  */
-export async function startSamlSignIn(providerId: number): Promise<string | null> {
+export async function startSamlSignIn(providerId: number, callbackURL = "/"): Promise<string | null> {
   try {
     const response = await fetch("/api/auth/sign-in/saml", {
       method: "POST",
       credentials: "same-origin",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ providerId, callbackURL: "/" }),
+      body: JSON.stringify({ providerId, callbackURL }),
     });
     const body = (await response.json().catch(() => null)) as { url?: string; message?: string } | null;
     if (!response.ok || typeof body?.url !== "string") return null;

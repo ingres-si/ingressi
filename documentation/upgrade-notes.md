@@ -4,6 +4,7 @@ Pull the new images and recreate the containers with `docker compose pull && doc
 
 ## Upgrading to the next release
 
+- **MCP server.** `/api/mcp` is a Model Context Protocol endpoint for AI clients, protected by OAuth 2.1 (PKCE, dynamic client registration, rotating refresh tokens) and limited to the permissions of the account that approves each client. It is on by default; **Settings → MCP server** turns it off, closes client registration and lists every grant. See [mcp.md](mcp.md). Database migration `0067` adds four tables; it runs on start.
 - **Access lists for some paths** of a host (`pathAccessLists`, **Access → Access lists for paths**): requests to those paths must also pass the list's rules and Basic Auth. See [access-lists.md](access-lists.md#lists-for-some-paths-only). (#387)
 - **Changing a proxy host's access list needs `access_lists:write`.** A non-administrator used to need `access_lists:read` to choose one and nothing to remove one. Roles that should keep doing this need `access_lists:write`.
 

@@ -25,14 +25,31 @@ async function safely<T>(read: () => Promise<T>, fallback: T): Promise<T> {
   }
 }
 
+/**
+ * Where a completed sign-in goes: a same-origin path from the `next` query
+ * parameter (the middleware adds it to protected deep links, including the
+ * MCP consent page), or "/". A scheme, a host or a backslash is refused: the
+ * login page must not be an open redirect.
+ */
+function safeNextPath(value: string | string[] | undefined): string {
+  if (typeof value !== "string" || !value.startsWith("/") || value.startsWith("//")) return "/";
+  // eslint-disable-next-line no-control-regex
+  if (/[\\\u0000-\u001f]/.test(value)) return "/";
+  // A crafted next=/login would send a signed-in visitor back here forever.
+  if (value === "/login" || value.startsWith("/login?") || value.startsWith("/login/")) return "/";
+  return value;
+}
+
 export default async function LoginPage({ searchParams }: LoginPageProps = {}) {
+  const params = (await searchParams) ?? {};
+  const next = safeNextPath(params.next);
   const session = await auth();
   if (session) {
-    redirect(await mfaEnrolmentRequired(Number(session.user.id)) ? MFA_SETUP_PATH : "/");
+    redirect(await mfaEnrolmentRequired(Number(session.user.id)) ? MFA_SETUP_PATH : next);
   }
 
   const enabledProviders = await getProviderDisplayList();
-  const { error } = (await searchParams) ?? {};
+  const { error } = params;
   // Where single sign-on sends the browser, shown on its button.
   const oauthHosts = await safely(oauthProviderHosts, new Map<string, string>());
   const samlHosts = await safely(samlProviderHosts, new Map<number, string>());
@@ -48,6 +65,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps = {}) {
       // Passkey sign-in is offered once any account has a passkey.
       passkeysAvailable={await safely(async () => await anyPasskeyExists(), false)}
       initialError={error === "saml" ? SAML_ERROR_MESSAGE : null}
+      next={next}
     />
   );
 }

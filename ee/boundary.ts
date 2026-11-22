@@ -149,6 +149,8 @@ export const CORE_EE_HOOKS: Readonly<Record<string, string>> = {
   "src/lib/instance-sync-validation.ts": "White-label and API monetization: their parts of a sync payload.",
   "src/lib/instance-sync.ts": "Fleet, white-label, API monetization and certificate storage: their parts of instance sync.",
   "src/lib/log-parser.ts": "API monetization: credits failed answers from the access log.",
+  "src/lib/mcp/server.ts": "Custom roles: the permissions an MCP client acts with.",
+  "src/lib/mcp/tools.ts": "Change approvals: whether a host change must become a change request.",
   "src/lib/mfa-auth.ts": "LDAP, SAML and white-label: directory passwords and sign-in paths under MFA, the product name.",
   "src/lib/mfa.ts": "LDAP and enforced SSO: which accounts sign in with a directory or are break-glass.",
   "src/lib/models/api-tokens.ts": "Custom roles: a token owner's permissions.",

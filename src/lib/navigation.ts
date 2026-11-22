@@ -44,6 +44,7 @@ export type NavEntryKey =
   | "high-availability"
   | "monetization"
   | "settings"
+  | "mcp"
   | "branding"
   | "profile"
   | "api-docs";
@@ -202,6 +203,11 @@ export const NAV_FOOTER: readonly NavEntry[] = [
       { href: "/settings", label: "Settings", permission: "settings:read" },
       { href: "/settings/ai", label: "AI settings", permission: "ai:read" },
     ],
+  },
+  {
+    key: "mcp",
+    label: "MCP server",
+    pages: [{ href: "/mcp", label: "MCP server", permission: "settings:read" }],
   },
   { key: "branding", label: "Branding", pages: [{ href: "/branding", label: "Branding", permission: "branding:read" }] },
 ];

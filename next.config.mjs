@@ -92,6 +92,27 @@ const nextConfig = {
       },
     ];
   },
+  // The MCP endpoints' discovery documents live at fixed well-known URIs
+  // (RFC 8414 and RFC 9728). Serving them through rewrites keeps the App
+  // Router's route list free of dot-directories; the handlers are under
+  // app/api/oauth/well-known/.
+  async rewrites() {
+    return [
+      {
+        source: '/.well-known/oauth-protected-resource',
+        destination: '/api/oauth/well-known/protected-resource',
+      },
+      {
+        // The path-specific form for the MCP endpoint (RFC 9728 §3.1).
+        source: '/.well-known/oauth-protected-resource/api/mcp',
+        destination: '/api/oauth/well-known/protected-resource',
+      },
+      {
+        source: '/.well-known/oauth-authorization-server',
+        destination: '/api/oauth/well-known/authorization-server',
+      },
+    ];
+  },
   // Security headers (CSP, etc.) are set per-request in proxy.ts middleware
   // with a unique nonce, so they are NOT defined here as static headers.
 };

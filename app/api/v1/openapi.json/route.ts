@@ -47,6 +47,7 @@ import {
   PASSKEYS_OPENAPI_TAG,
   PREFERENCES_OPENAPI_TAG,
 } from "@/src/lib/identity-openapi";
+import { MCP_OPENAPI_PATHS, MCP_OPENAPI_SCHEMAS, MCP_OPENAPI_TAG } from "@/src/lib/mcp/openapi";
 
 const SCOPED_HOSTS_NOTE =
   "With a custom role limited to tagged hosts (its scopeTags), lists only include hosts carrying one of the role's tags, " +
@@ -76,6 +77,7 @@ const spec = {
   security: [{ bearerAuth: [] }, { sessionAuth: [] }],
   tags: [
     { name: "Tokens", description: "API token management" },
+    MCP_OPENAPI_TAG,
     { name: "Proxy Hosts", description: "HTTP/HTTPS reverse proxy hosts" },
     { name: "L4 Proxy Hosts", description: "Layer 4 (TCP/UDP) proxy hosts" },
     { name: "Certificates", description: "TLS certificate management" },
@@ -165,6 +167,8 @@ const spec = {
     ...IDENTITY_OVERVIEW_OPENAPI_PATHS,
     // ── Governance and operations: audit details, versions, setup, overview ──
     ...GOVERNANCE_OPENAPI_PATHS,
+    // ── MCP server (OAuth clients and live grants) ──────────────────
+    ...MCP_OPENAPI_PATHS,
     // ── Tokens ──────────────────────────────────────────────────────
     "/api/v1/tokens": {
       get: {
@@ -3302,6 +3306,7 @@ const spec = {
     },
     schemas: {
       ...ACCESS_LISTS_OPENAPI_SCHEMAS,
+      ...MCP_OPENAPI_SCHEMAS,
       ...MONETIZATION_OPENAPI_SCHEMAS,
       ...WHITE_LABEL_OPENAPI_SCHEMAS,
       ...APPROVALS_OPENAPI_SCHEMAS,

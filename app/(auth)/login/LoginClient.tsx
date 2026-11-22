@@ -21,7 +21,7 @@ import { startSamlSignIn } from "@/ee/saml/ui/sign-in-client";
  * to set up MFA goes to the setup page first (after the grace period the
  * dashboard sends it there anyway).
  */
-async function enterDashboard(): Promise<void> {
+async function enterDashboard(next: string): Promise<void> {
   try {
     const response = await fetch("/api/v1/mfa", { credentials: "same-origin" });
     if (response.ok) {
@@ -38,7 +38,7 @@ async function enterDashboard(): Promise<void> {
   // instead of running inside the login page's document. replace() keeps
   // /login out of the history, so Back leaves the app instead of bouncing
   // through the login page.
-  window.location.replace("/");
+  window.location.replace(next);
 }
 
 /** "local" is the account's own password; a number is a directory (ee/ldap). */
@@ -67,6 +67,8 @@ interface LoginClientProps {
   passkeysAvailable?: boolean;
   /** An error to show on arrival, such as a SAML sign-in that did not complete. */
   initialError?: string | null;
+  /** Where to go after a successful sign-in (a same-origin path), or "/". */
+  next?: string;
 }
 
 function initialsOf(name: string): string {
@@ -111,6 +113,7 @@ export default function LoginClient({
   samlProviders = [],
   passkeysAvailable = false,
   initialError = null,
+  next = "/",
 }: LoginClientProps) {
   const [loginError, setLoginError] = useState<string | null>(initialError);
   const [loginPending, setLoginPending] = useState(false);
@@ -182,7 +185,7 @@ export default function LoginClient({
       return;
     }
 
-    await enterDashboard();
+    await enterDashboard(next);
   };
 
   const restartSignIn = (message: string | null) => {
@@ -211,7 +214,7 @@ export default function LoginClient({
       setLoginError(describeMfaError(result.error));
       return;
     }
-    await enterDashboard();
+    await enterDashboard(next);
   };
 
   const handlePasskeySignIn = async () => {
@@ -223,14 +226,14 @@ export default function LoginClient({
       setLoginError(describePasskeyError(result.error));
       return;
     }
-    await enterDashboard();
+    await enterDashboard(next);
   };
 
   const handleOAuthSignIn = async (providerId: string) => {
     setLoginError(null);
     setOauthPending(providerId);
     try {
-      await authClient.signIn.social({ provider: providerId, callbackURL: "/" });
+      await authClient.signIn.social({ provider: providerId, callbackURL: next });
     } catch {
       setLoginError("Failed to sign in with OAuth");
       setOauthPending(null);
@@ -240,7 +243,7 @@ export default function LoginClient({
   const handleSamlSignIn = async (providerId: number) => {
     setLoginError(null);
     setOauthPending(`saml:${providerId}`);
-    const url = await startSamlSignIn(providerId);
+    const url = await startSamlSignIn(providerId, next);
     if (!url) {
       setLoginError("Failed to start single sign-on. Try again.");
       setOauthPending(null);

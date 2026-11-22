@@ -7,7 +7,7 @@ import { useTheme } from "next-themes";
 import {
   ArrowLeftRight, Bell, ChartColumn, ChevronsUpDown, CircleCheck, ClipboardCheck, Coins,
   Ellipsis, FileCheck2, FileJson2, History, KeyRound, Layers, LayoutGrid, LockKeyhole, LogOut, Menu, Network, Palette,
-  ScrollText, Search, Server, ShieldAlert, ShieldCheck, SlidersHorizontal, UserRound, Users, type LucideIcon,
+  Plug, ScrollText, Search, Server, ShieldAlert, ShieldCheck, SlidersHorizontal, UserRound, Users, type LucideIcon,
 } from "lucide-react";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import {
@@ -59,6 +59,7 @@ const ICONS: Record<NavEntryKey, LucideIcon> = {
   "high-availability": Layers,
   monetization: Coins,
   settings: SlidersHorizontal,
+  mcp: Plug,
   branding: Palette,
   profile: UserRound,
   "api-docs": FileJson2,

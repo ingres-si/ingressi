@@ -703,4 +703,11 @@ Every guard of a route, page or server action and the permission it checks. Rout
 | `ee/white-label/ui/actions.ts` | `uploadBrandingAssetAction` | `branding:write` |
 | `ee/white-label/ui/actions.ts` | `deleteBrandingAssetAction` | `branding:write` |
 | `ee/white-label/ui/actions.ts` | `resetBrandingAction` | `branding:write` |
+| `app/(dashboard)/mcp/page.tsx` | `McpPage` | `settings:read` |
+| `app/api/v1/mcp/clients/[clientId]/route.ts` | `DELETE` | `settings:write` |
+| `app/api/v1/mcp/clients/route.ts` | `GET` | `settings:read` |
+| `app/api/v1/mcp/connections/[id]/route.ts` | `DELETE` | `settings:write` |
+| `app/api/v1/mcp/connections/route.ts` | `GET` | `settings:read` |
+| `app/api/v1/mcp/settings/route.ts` | `GET` | `settings:read` |
+| `app/api/v1/mcp/settings/route.ts` | `PUT` | `settings:write` |
 <!-- call-sites:end -->

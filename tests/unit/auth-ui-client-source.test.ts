@@ -14,10 +14,11 @@ const usersSources = readdirSync(usersDir)
   .map((file) => [file, readFileSync(resolve(usersDir, file), 'utf-8')] as const);
 
 describe('login page', () => {
-  it('replaces /login in the history with a full load of the dashboard', () => {
+  it('replaces /login in the history with a full load of the dashboard or the deep link', () => {
     // A full load gives the dashboard its own document and CSP nonce;
-    // replace() keeps Back from returning to /login.
-    expect(loginClient).toContain('window.location.replace("/")');
+    // replace() keeps Back from returning to /login. The destination is the
+    // page the middleware saved in `next` (an MCP consent link, a deep link).
+    expect(loginClient).toContain('window.location.replace(next)');
     expect(loginClient).not.toMatch(/window\.location\.assign\(|router\.(push|replace)\(\s*["']\/["']/);
   });
 });
