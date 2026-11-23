@@ -355,6 +355,134 @@ export const apiTokens = sqliteTable(
   })
 );
 
+/**
+ * OAuth 2.1 clients an MCP client registered dynamically (RFC 7591) with the
+ * MCP authorization server (src/lib/mcp/oauth.ts). Public clients have no
+ * secret; a confidential client stores only a SHA-256 hash of it.
+ */
+export const mcpOAuthClients = sqliteTable(
+  "mcp_oauth_clients",
+  {
+    /** The public client_id the client sends; opaque, issued by us. */
+    clientId: text("clientId").primaryKey(),
+    /** SHA-256 of the client secret; null for a public client (token_endpoint_auth_method "none"). */
+    clientSecretHash: text("clientSecretHash"),
+    name: text("name").notNull(),
+    /** The registered redirect URIs, a JSON array of absolute URIs. */
+    redirectUris: text("redirectUris").notNull(),
+    /** JSON arrays; only "code" responses and the two code grant types are offered. */
+    grantTypes: text("grantTypes").notNull().default('["authorization_code","refresh_token"]'),
+    tokenEndpointAuthMethod: text("tokenEndpointAuthMethod").notNull().default("none"),
+    clientUri: text("clientUri"),
+    logoUri: text("logoUri"),
+    softwareId: text("softwareId"),
+    softwareVersion: text("softwareVersion"),
+    createdAt: text("createdAt").notNull(),
+    lastUsedAt: text("lastUsedAt"),
+    /** Set when an administrator revoked the client; its tokens stop working with it. */
+    revokedAt: text("revokedAt")
+  },
+  (table) => ({
+    revoked: index("mcp_oauth_clients_revoked_idx").on(table.revokedAt)
+  })
+);
+
+/**
+ * What a user approved for a client (the scopes, space separated), one row
+ * per user and client: shown with the connection and kept for the audit
+ * trail. Every authorization request still shows the consent page.
+ */
+export const mcpOAuthConsents = sqliteTable(
+  "mcp_oauth_consents",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    userId: integer("userId")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    /** Not a declared reference: revokeClient and the pruner delete this row with the client. */
+    clientId: text("clientId").notNull(),
+    /** The granted scopes as given in the authorization request (space separated). */
+    scopes: text("scopes").notNull(),
+    resource: text("resource").notNull(),
+    createdAt: text("createdAt").notNull(),
+    updatedAt: text("updatedAt").notNull()
+  },
+  (table) => ({
+    userClientUnique: uniqueIndex("mcp_oauth_consents_user_client_unique").on(table.userId, table.clientId)
+  })
+);
+
+/**
+ * A single-use authorization code. Only its SHA-256 hash is stored; the
+ * parameters it was issued for are fixed here, so a code cannot be redeemed
+ * with a different redirect URI, PKCE verifier, scope or resource.
+ */
+export const mcpOAuthCodes = sqliteTable(
+  "mcp_oauth_codes",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    codeHash: text("codeHash").notNull(),
+    /** Not a declared reference: revokeClient and the pruner delete this row with the client. */
+    clientId: text("clientId").notNull(),
+    userId: integer("userId")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    redirectUri: text("redirectUri").notNull(),
+    codeChallenge: text("codeChallenge").notNull(),
+    /** The granted scopes (space separated). */
+    scopes: text("scopes").notNull(),
+    resource: text("resource").notNull(),
+    createdAt: text("createdAt").notNull(),
+    expiresAt: text("expiresAt").notNull(),
+    /** Set when redeemed; a second redemption is refused. */
+    consumedAt: text("consumedAt")
+  },
+  (table) => ({
+    codeHashUnique: uniqueIndex("mcp_oauth_codes_code_hash_unique").on(table.codeHash),
+    user: index("mcp_oauth_codes_user_idx").on(table.userId)
+  })
+);
+
+/**
+ * An access token, its rotating refresh token (same family), and the scopes
+ * and resource (the MCP endpoint) they were issued for. Only SHA-256 hashes
+ * are stored. A refresh rotates: the old row gets rotatedAt, a new row joins
+ * the family; presenting a rotated refresh token again revokes the family.
+ */
+export const mcpOAuthTokens = sqliteTable(
+  "mcp_oauth_tokens",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    accessTokenHash: text("accessTokenHash").notNull(),
+    refreshTokenHash: text("refreshTokenHash"),
+    /** Not a declared reference: revokeClient and the pruner delete this row with the client. */
+    clientId: text("clientId").notNull(),
+    userId: integer("userId")
+      .references(() => users.id, { onDelete: "cascade" })
+      .notNull(),
+    /** The granted scopes (space separated), as approved. */
+    scopes: text("scopes").notNull(),
+    /** The audience the token is bound to: the canonical MCP endpoint URI. */
+    resource: text("resource").notNull(),
+    accessExpiresAt: text("accessExpiresAt").notNull(),
+    refreshExpiresAt: text("refreshExpiresAt").notNull(),
+    /** Groups the tokens of one authorization grant across refresh rotations. */
+    familyId: text("familyId").notNull(),
+    createdAt: text("createdAt").notNull(),
+    lastUsedAt: text("lastUsedAt"),
+    /** Set when the refresh token was exchanged (rotation). */
+    rotatedAt: text("rotatedAt"),
+    /** Set when the token was revoked (sign-out, reuse detection, client revocation). */
+    revokedAt: text("revokedAt")
+  },
+  (table) => ({
+    accessHashUnique: uniqueIndex("mcp_oauth_tokens_access_hash_unique").on(table.accessTokenHash),
+    refreshHashUnique: uniqueIndex("mcp_oauth_tokens_refresh_hash_unique").on(table.refreshTokenHash),
+    family: index("mcp_oauth_tokens_family_idx").on(table.familyId),
+    user: index("mcp_oauth_tokens_user_idx").on(table.userId)
+  })
+);
+
 export const auditEvents = sqliteTable(
   "audit_events",
   {

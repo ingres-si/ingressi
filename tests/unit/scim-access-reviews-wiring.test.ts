@@ -44,7 +44,10 @@ describe('middleware', () => {
   it('still sends dashboard pages without a session to the login page', async () => {
     for (const path of ['/scim', '/access-reviews', '/my-reviews']) {
       const response = await middleware(new NextRequest(`http://localhost:3000${path}`));
-      expect(response.headers.get('location'), path).toMatch(/\/login$/);
+      const location = new URL(response.headers.get('location')!);
+      expect(location.pathname, path).toBe('/login');
+      // The page the user asked for survives the sign-in.
+      expect(location.searchParams.get('next'), path).toBe(path);
     }
   });
 });

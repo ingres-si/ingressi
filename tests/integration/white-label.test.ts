@@ -358,7 +358,9 @@ describe('public image route', () => {
     expect(response.headers.get('content-security-policy')).toBeNull();
     // Dashboard pages still redirect to the login page.
     const page = await middleware(new NextRequest('http://localhost:3000/branding'));
-    expect(page.headers.get('location')).toBe('http://localhost:3000/login');
+    const location = new URL(page.headers.get('location')!);
+    expect(location.pathname).toBe('/login');
+    expect(location.searchParams.get('next')).toBe('/branding');
   });
 });
 

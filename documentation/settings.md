@@ -9,6 +9,7 @@ The pages are listed under their sidebar entry, which shows them while one of it
 | Page | Sidebar entry | What it holds |
 | --- | --- | --- |
 | Settings (`/settings`) | Settings | Primary domain, the dashboard address (`BASE_URL`, read-only) |
+| MCP server (`/mcp`) | Settings | The MCP endpoint and its discovery documents, dynamic client registration, registered clients and live grants ([mcp.md](mcp.md)) |
 | Certificate settings (`/certificates/settings`) | Certificates | Let's Encrypt or your own ACME directory and its root certificate, the contact e-mail, DNS-01 providers and resolvers, certificate storage |
 | Host defaults (`/proxy-hosts/defaults`) | Proxy hosts | Requests for unknown hosts ([default-response.md](default-response.md)), fallback error pages, response headers for every response, trusted proxies, upstream DNS pinning ([upstream-dns-pinning.md](upstream-dns-pinning.md)), Authentik and generic forward auth defaults for new hosts |
 | Geo blocking (`/geo-blocking`) | Security events | Default geo blocking rules and the GeoLite2 databases ([geo-blocking.md](geo-blocking.md)) |

@@ -93,6 +93,18 @@ describe('permission call sites', () => {
       'app/api/monetization/replica/allowance/route.ts',
       'app/api/monetization/stripe/webhook/route.ts',
       'app/api/auth/[...all]/route.ts',
+      // The MCP endpoint authenticates its own bearer token (src/lib/mcp/server.ts).
+      'app/api/mcp/route.ts',
+      // The OAuth endpoints: discovery and registration are public by design,
+      // the token and revocation endpoints authenticate the client, and the
+      // consent POST checks the session and the Origin header itself.
+      'app/api/oauth/authorize/route.ts',
+      'app/api/oauth/register/route.ts',
+      'app/api/oauth/revoke/route.ts',
+      'app/api/oauth/token/route.ts',
+      'app/api/oauth/well-known/authorization-server/route.ts',
+      'app/api/oauth/well-known/protected-resource/route.ts',
+
       'app/api/auth/link-account/route.ts',
       'app/api/auth/logout/route.ts',
       'app/api/forward-auth/callback/route.ts',

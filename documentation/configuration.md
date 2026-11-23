@@ -10,7 +10,7 @@ The web container is configured with environment variables. Copy `.env.example` 
 | `SESSION_SECRET_PREVIOUS` | Earlier `SESSION_SECRET` values (comma-separated), used to decrypt stored secrets after a rotation and, on an instance sync slave, to prove its new sync key to the master. See [Rotating SESSION_SECRET](security.md#rotating-session_secret) | None | No |
 | `ADMIN_USERNAME` | Admin login username: 3–255 characters from `A-Z a-z 0-9 _ . @ -` (the login page refuses others and ignores case) | `admin` | **Yes** |
 | `ADMIN_PASSWORD` | Admin password (see the [production requirements](security.md#production-checklist)) | `admin` (dev only) | **Yes** |
-| `BASE_URL` | Public URL where users access the dashboard.<br/>**Required for OAuth** - must match redirect URI | `http://localhost:3000` | **Yes** (if using OAuth) |
+| `BASE_URL` | Public URL where users access the dashboard.<br/>**Required for OAuth and the MCP server** - must match redirect URIs; the MCP endpoint, its discovery documents and the audience of its tokens are built from it ([mcp.md](mcp.md)) | `http://localhost:3000` | **Yes** (if using OAuth or MCP) |
 | `KEEP_ALIVE_TIMEOUT` | How long the web server keeps an idle connection open, in milliseconds. Keep it above the idle time of any proxy in front (Caddy: 2 minutes), or the proxy can reuse a connection the server just closed and answer 502 | `125000` | No |
 | `CADDY_API_URL` | Caddy Admin API endpoint | `http://caddy:2019` (prod)<br/>`http://localhost:2019` (dev) | No |
 | `DATABASE_URL` | The database: a SQLite file, or a `postgres://` URL to run on PostgreSQL (see [PostgreSQL](postgresql.md)) | `file:/app/data/ingressi.db` | No |

@@ -456,6 +456,13 @@
       "when": 1793705840156,
       "tag": "0066_access_list_skip_auth",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "6",
+      "when": 1795381546464,
+      "tag": "0067_mcp_oauth",
+      "breakpoints": true
     }
   ]
 }

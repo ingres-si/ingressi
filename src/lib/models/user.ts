@@ -14,6 +14,9 @@ import {
   proxyHosts,
   l4ProxyHosts,
   apiTokens,
+  mcpOAuthConsents,
+  mcpOAuthCodes,
+  mcpOAuthTokens,
   auditEvents,
   mtlsRoles,
   mtlsAccessRules,
@@ -779,6 +782,10 @@ async function deleteUserReferences(tx: AppTx, userId: number): Promise<void> {
   await tx.delete(userPreferences).where(eq(userPreferences.userId, userId));
   await tx.delete(pendingOAuthLinks).where(eq(pendingOAuthLinks.userId, userId));
   await tx.delete(apiTokens).where(eq(apiTokens.createdBy, userId));
+  // MCP grants (src/lib/mcp/oauth.ts): consents, codes and tokens reference the user.
+  await tx.delete(mcpOAuthTokens).where(eq(mcpOAuthTokens.userId, userId));
+  await tx.delete(mcpOAuthCodes).where(eq(mcpOAuthCodes.userId, userId));
+  await tx.delete(mcpOAuthConsents).where(eq(mcpOAuthConsents.userId, userId));
   await tx.delete(verifications).where(sql`${linkStateUserId} = ${String(userId)}`);
 
   // onDelete: "set null".

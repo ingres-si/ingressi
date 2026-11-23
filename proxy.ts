@@ -80,6 +80,12 @@ export default async function middleware(req: NextRequest) {
     pathname === "/login" ||
     pathname === "/portal" ||
     pathname.startsWith("/api/auth") ||
+    // The MCP endpoint authenticates its own bearer token; the OAuth
+    // endpoints are public by design (discovery, registration, token
+    // exchange), and the consent POST checks the session and Origin itself.
+    pathname === "/api/mcp" ||
+    pathname.startsWith("/api/oauth/") ||
+    pathname.startsWith("/.well-known/") ||
     pathname === "/api/health" ||
     pathname === "/api/instances/sync" ||
     // Pull replicas (ee/fleet): the route authenticates the replica's pull
@@ -103,9 +109,13 @@ export default async function middleware(req: NextRequest) {
   const session = await auth(req);
   const isAuthenticated = !!session?.user;
 
-  // Redirect unauthenticated users to login
+  // Redirect unauthenticated users to login, keeping where they were going so
+  // an OAuth consent link (and any deep link) survives the sign-in. Only a
+  // same-origin path is kept: a scheme and host would be an open redirect.
   if (!isAuthenticated && !pathname.startsWith("/login")) {
     const loginUrl = new URL("/login", req.url);
+    const next = `${pathname}${req.nextUrl.search}`;
+    if (next.startsWith("/") && !next.startsWith("//")) loginUrl.searchParams.set("next", next);
     return NextResponse.redirect(loginUrl);
   }
 
